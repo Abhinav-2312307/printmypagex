@@ -9,10 +9,13 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "cloudinary": "^2.9.0",
     "firebase": "^12.9.0",
     "firebase-admin": "^13.7.0",
     "mongoose": "^9.2.3",
     "next": "16.1.6",
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "^1.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
