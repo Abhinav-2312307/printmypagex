@@ -16,17 +16,23 @@
     "next": "16.1.6",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^1.1.1",
+    "pusher": "^5.3.2",
+    "pusher-js": "^8.4.0",
+    "razorpay": "^2.9.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "react-hot-toast": "^2.6.0",
+    "resend": "^6.9.3"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.27",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
-    "tailwindcss": "^4",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^3.4.19",
     "typescript": "^5"
   }
 }

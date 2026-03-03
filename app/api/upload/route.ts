@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { connectDB } from "@/lib/mongodb"
 import Order from "@/models/Order"
+import { pusherServer } from "@/lib/pusher-server"
 import { v2 as cloudinary } from "cloudinary"
 import pdf from "pdf-parse/lib/pdf-parse.js"
 
@@ -21,30 +22,34 @@ export async function POST(req: Request) {
     const file = formData.get("file") as File
     const printType = formData.get("printType") as string
     const firebaseUID = formData.get("firebaseUID") as string
+    const requestType = formData.get("requestType") as string
+    const supplier = formData.get("supplier") as string
 
     if (!file) {
-      return NextResponse.json({error:"File missing"})
+      return NextResponse.json({ error: "File missing" }, { status: 400 })
     }
 
+    // Convert file to buffer
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
 
+    // Count pages
     let pages = 1
 
     if (file.type === "application/pdf") {
-
       const data = await pdf(buffer)
       pages = data.numpages
-
     }
 
+    // Price calculation
     let pricePerPage = 2
 
     if (printType === "color") pricePerPage = 5
     if (printType === "glossy") pricePerPage = 15
 
-    const price = pages * pricePerPage
+    const estimatedPrice = pages * pricePerPage
 
+    // Upload to Cloudinary
     const upload = await cloudinary.uploader.upload(
       `data:${file.type};base64,${buffer.toString("base64")}`,
       {
@@ -52,28 +57,44 @@ export async function POST(req: Request) {
       }
     )
 
+    // Create Order (Marketplace Mode - Option A)
     const order = await Order.create({
-      firebaseUID,
-      fileUrl: upload.secure_url,
+
+      userUID: firebaseUID,
+
+      supplierUID: requestType === "specific" ? supplier : null,
+
+      requestType: requestType || "global",
+
+      fileURL: upload.secure_url,
+
       pages,
-      price,
+
+      printType,
+
+      estimatedPrice,
+
       status: "pending"
+
     })
 
+    // 🔥 REAL-TIME BROADCAST TO SUPPLIERS
+    await pusherServer.trigger("orders", "new-order", order)
+
     return NextResponse.json({
-      success:true,
+      success: true,
       pages,
-      price,
+      estimatedPrice,
       order
     })
 
-  } catch(err){
+  } catch (err) {
 
-    console.log("UPLOAD ERROR:", err)
+    console.error("UPLOAD ERROR:", err)
 
     return NextResponse.json({
-      error:"Upload failed"
-    })
+      error: "Upload failed"
+    }, { status: 500 })
 
   }
 

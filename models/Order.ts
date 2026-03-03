@@ -2,33 +2,77 @@ import mongoose from "mongoose"
 
 const OrderSchema = new mongoose.Schema({
 
-firebaseUID:{
-type:String,
-required:true
-},
+  userUID:{
+    type:String,
+    required:true
+  },
 
-fileURL:String,
+  supplierUID:{
+    type:String,
+    default:null
+  },
 
-pages:Number,
+  requestType:{
+    type:String,
+    enum:["global","specific"],
+    default:"global"
+  },
 
-printType:String,
+  fileURL:{
+    type:String,
+    required:true
+  },
 
-price:Number,
+  pages:{
+    type:Number,
+    required:true
+  },
 
-status:{
-type:String,
-default:"pending"
-},
+  verifiedPages:{
+    type:Number,
+    default:null
+  },
 
-supplier:{
-type:String,
-default:null
-},
+  printType:{
+    type:String,
+    enum:["bw","color","glossy"],
+    required:true
+  },
 
-createdAt:{
-type:Date,
-default:Date.now
-}
+  estimatedPrice:{
+    type:Number,
+    required:true
+  },
+
+  finalPrice:{
+    type:Number,
+    default:null
+  },
+
+  paymentStatus:{
+    type:String,
+    enum:["unpaid","paid"],
+    default:"unpaid"
+  },
+
+  status:{
+    type:String,
+    enum:[
+      "pending",
+      "accepted",
+      "awaiting_payment",
+      "printing",
+      "printed",
+      "delivered",
+      "cancelled"
+    ],
+    default:"pending"
+  },
+
+  createdAt:{
+    type:Date,
+    default:Date.now
+  }
 
 })
 

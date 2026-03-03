@@ -1,22 +1,48 @@
 import mongoose from "mongoose"
 
 const UserSchema = new mongoose.Schema({
-  firebaseUID: String,
-  name: String,
-  email: String,
-  phone: String,
-  rollNo: String,
-  branch: String,
-  year: Number,
-  section: String,
-  role: {
-    type: String,
-    default: "USER"
+
+  firebaseUID:{
+    type:String,
+    required:true,
+    unique:true
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
+
+  name:{
+    type:String,
+    required:true
+  },
+
+  email:String,
+
+  phone:{
+    type:String,
+    required:true
+  },
+
+  rollNo:{
+    type:String,
+    required:true
+  },
+
+  branch:String,
+
+  year:Number,
+
+  section:String,
+
+  role:{
+    type:String,
+    enum:["USER","SUPPLIER","ADMIN"],
+    default:"USER"
+  },
+
+  createdAt:{
+    type:Date,
+    default:Date.now
   }
+
 })
 
-export default mongoose.models.User || mongoose.model("User", UserSchema)
+export default mongoose.models.User ||
+mongoose.model("User",UserSchema)
