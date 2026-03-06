@@ -1,7 +1,6 @@
 "use client"
 
 import SupplierNavbar from "@/components/SupplierNavbar"
-import SupplierGuard from "@/components/SupplierGuard"
 
 export default function SupplierLayout({
  children
@@ -10,8 +9,6 @@ export default function SupplierLayout({
 }){
 
 return(
-
-<SupplierGuard>
 
 <div className="min-h-screen bg-black text-white">
 
@@ -22,8 +19,6 @@ return(
 </div>
 
 </div>
-
-</SupplierGuard>
 
 )
 

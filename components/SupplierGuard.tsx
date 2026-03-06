@@ -19,6 +19,7 @@ useEffect(()=>{
 const unsub = onAuthStateChanged(auth,async(user)=>{
 
 if(!user){
+setLoading(false)
 router.push("/supplier/login")
 return
 }
@@ -30,11 +31,13 @@ const res = await fetch(
 const data = await res.json()
 
 if(!data.supplier){
+setLoading(false)
 router.push("/supplier/register")
 return
 }
 
 if(!data.supplier.approved){
+setLoading(false)
 router.push("/supplier")
 return
 }
@@ -45,7 +48,7 @@ setLoading(false)
 
 return ()=>unsub()
 
-},[])
+},[router])
 
 if(loading){
 return(

@@ -38,11 +38,7 @@ Manage everything in one place.
 </p>
 
 <div className="flex gap-4 mt-6">
-
-<Link
-href="/supplier/dashboard"
-className="px-6 py-3 bg-primary rounded-xl hover:scale-105 transition"
->
+<Link href={user ? "/supplier/dashboard" : "/supplier/login"} className="px-6 py-3 bg-primary rounded-xl hover:scale-105 transition">
 Go to Dashboard
 </Link>
 

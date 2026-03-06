@@ -1,6 +1,5 @@
 "use client"
 
-import SupplierGuard from "@/components/SupplierGuard"
 import { useEffect, useState } from "react"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
@@ -111,8 +110,6 @@ revenue:o.estimatedPrice
 
 
 return(
-
-<SupplierGuard>
 
 <div className="max-w-6xl mx-auto p-8 space-y-10">
 
@@ -324,15 +321,11 @@ Accept
 
 {/* ORDER DETAILS MODAL */}
 
-{/* ORDER DETAILS MODAL */}
-
 {selectedOrder && (
 
 <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
 
 <div className="bg-card p-8 rounded-2xl w-[520px] max-h-[85vh] overflow-y-auto space-y-6 shadow-xl border border-white/10">
-
-{/* HEADER */}
 
 <div className="flex justify-between items-center">
 <h2 className="text-2xl font-semibold">
@@ -346,9 +339,6 @@ className="text-gray-400 hover:text-white"
 ✕
 </button>
 </div>
-
-
-{/* ORDER INFO */}
 
 <div className="grid grid-cols-2 gap-4 text-sm">
 
@@ -403,10 +393,6 @@ className="text-gray-400 hover:text-white"
 </p>
 </div>
 
-
-
-{/* INSTRUCTIONS */}
-
 {selectedOrder.instruction && (
 
 <div>
@@ -421,9 +407,6 @@ Instructions
 </div>
 
 )}
-
-
-{/* FILE ACTIONS */}
 
 <div className="flex gap-3 pt-2">
 
@@ -445,9 +428,6 @@ Download File
 
 </div>
 
-
-{/* CLOSE BUTTON */}
-
 <button
 onClick={()=>setSelectedOrder(null)}
 className="w-full mt-2 text-gray-400 hover:text-white text-sm"
@@ -461,9 +441,6 @@ Close
 
 )}
 
-
-{/* SUPPLIER PROFILE MODAL */}
-
 {showProfile && supplier &&(
 
 <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
@@ -475,17 +452,11 @@ Supplier Profile
 </h2>
 
 <p><b>Name:</b> {supplier.name}</p>
-
 <p><b>Email:</b> {supplier.email}</p>
-
 <p><b>Phone:</b> {supplier.phone}</p>
-
 <p><b>Branch:</b> {supplier.branch}</p>
-
 <p><b>Year:</b> {supplier.year}</p>
-
 <p><b>Roll No:</b> {supplier.rollNo}</p>
-
 <p><b>Status:</b> {supplier.approved ? "Approved" : "Pending"}</p>
 
 <button
@@ -502,8 +473,6 @@ Close
 )}
 
 </div>
-
-</SupplierGuard>
 
 )
 

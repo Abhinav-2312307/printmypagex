@@ -16,6 +16,9 @@ const unsub = onAuthStateChanged(auth,(user)=>{
 if(user){
 router.push("/supplier/dashboard")
 }
+else{
+router.push("/supplier/login")
+}
 
 })
 

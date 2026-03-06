@@ -34,10 +34,10 @@ export default function Home() {
           </Link>
 
           <Link
-            href="/supplier/register"
+            href="/supplier"
             className="px-6 py-3 border border-gray-300 dark:border-gray-600 rounded-xl hover:border-primary"
           >
-            Become Supplier
+            Supplier Portal 
           </Link>
 
         </div>
