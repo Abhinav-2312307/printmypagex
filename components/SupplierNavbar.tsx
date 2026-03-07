@@ -4,6 +4,7 @@ import { useState,useEffect,useRef } from "react"
 import { auth } from "@/lib/firebase"
 import { signOut,onAuthStateChanged } from "firebase/auth"
 import { useRouter,usePathname } from "next/navigation"
+import toast from "react-hot-toast"
 
 export default function SupplierNavbar(){
 
@@ -14,11 +15,12 @@ const [user,setUser] = useState<any>(null)
 const [supplier,setSupplier] = useState<any>(null)
 const [open,setOpen] = useState(false)
 const [showProfile,setShowProfile] = useState(false)
+const [togglingActive,setTogglingActive] = useState(false)
 
 const dropdownRef = useRef<HTMLDivElement>(null)
 
 
-/* auth listener */
+/* AUTH LISTENER */
 
 useEffect(()=>{
 
@@ -31,7 +33,7 @@ return ()=>unsub()
 },[])
 
 
-/* load supplier info */
+/* LOAD SUPPLIER DATA */
 
 useEffect(()=>{
 
@@ -51,23 +53,76 @@ loadSupplier()
 },[user])
 
 
+/* LOGOUT */
+
 const logout = async()=>{
 await signOut(auth)
 router.push("/supplier")
 }
 
 
-/* close dropdown */
+/* TOGGLE ACTIVE */
+
+const toggleActive = async()=>{
+
+if(!user || !supplier || togglingActive) return
+
+setTogglingActive(true)
+
+try{
+
+const res = await fetch("/api/supplier/toggle-active",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+firebaseUID:user.uid,
+active:!supplier.active
+})
+})
+
+const data = await res.json()
+
+if(!res.ok || !data.success){
+toast.error(data.message || "Failed to update status")
+return
+}
+
+setSupplier(data.supplier)
+
+toast.success(
+data.supplier.active
+? "Supplier Activated"
+: "Supplier Deactivated"
+)
+
+}catch{
+
+toast.error("Failed to update active status")
+
+}finally{
+
+setTogglingActive(false)
+
+}
+
+}
+
+
+/* CLOSE DROPDOWN ON OUTSIDE CLICK */
 
 useEffect(()=>{
 
 const handleClickOutside = (event:MouseEvent)=>{
+
 if(
 dropdownRef.current &&
 !dropdownRef.current.contains(event.target as Node)
 ){
 setOpen(false)
 }
+
 }
 
 document.addEventListener("mousedown",handleClickOutside)
@@ -81,7 +136,6 @@ const userInitial =
 user?.displayName?.charAt(0)?.toUpperCase() ||
 user?.email?.charAt(0)?.toUpperCase() ||
 "U"
-
 
 
 return(
@@ -102,11 +156,10 @@ PrintMyPage
 </h1>
 
 
-
 <div className="flex items-center gap-12">
 
 
-{/* ---------------- NOT LOGGED IN ---------------- */}
+{/* NOT LOGGED IN */}
 
 {!user && (
 
@@ -131,14 +184,13 @@ Register
 )}
 
 
-
-{/* ---------------- LOGGED IN ---------------- */}
+{/* LOGGED IN */}
 
 {user && (
 
 <>
 
-{/* LANDING PAGE -> SHOW DASHBOARD */}
+{/* LANDING PAGE */}
 
 {pathname === "/supplier" && (
 
@@ -152,8 +204,7 @@ Dashboard
 )}
 
 
-
-{/* DASHBOARD -> SHOW ORDERS */}
+{/* DASHBOARD */}
 
 {pathname === "/supplier/dashboard" && (
 
@@ -167,8 +218,7 @@ My Orders
 )}
 
 
-
-{/* ORDERS PAGE -> SHOW DASHBOARD */}
+{/* ORDERS */}
 
 {pathname === "/supplier/orders" && (
 
@@ -180,7 +230,6 @@ Dashboard
 </button>
 
 )}
-
 
 
 {/* AVATAR */}
@@ -195,16 +244,16 @@ className="w-11 h-11 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-500 
 </div>
 
 
-
 {/* DROPDOWN */}
 
 {open && (
 
-<div className="absolute right-0 mt-5 w-64 bg-[#0b1220] border border-white/10 rounded-xl shadow-2xl p-4 space-y-3">
+<div className="absolute right-0 mt-5 w-72 bg-[#0b1220] border border-white/10 rounded-xl shadow-2xl p-4 space-y-4">
 
 <div className="text-sm text-gray-400 border-b border-white/10 pb-3 break-all">
 {user?.email}
 </div>
+
 
 <button
 onClick={()=>{
@@ -215,6 +264,36 @@ className="block w-full text-left hover:text-indigo-400 transition"
 >
 View Profile
 </button>
+
+
+{/* ACTIVE TOGGLE */}
+
+<div className={`flex items-center justify-between py-2 ${togglingActive ? "opacity-60 pointer-events-none" : ""}`}>
+
+<p className="text-sm text-gray-300 font-medium">
+{supplier?.active ? "Active" : "Inactive"}
+</p>
+
+
+<label className="relative inline-flex items-center cursor-pointer">
+
+<input
+type="checkbox"
+checked={supplier?.active || false}
+onChange={toggleActive}
+className="sr-only peer"
+/>
+
+<div className="peer ring-0 bg-rose-400 rounded-full outline-none duration-300 after:duration-500 w-12 h-12 shadow-md peer-checked:bg-emerald-500 peer-focus:outline-none after:content-['✖️'] after:rounded-full after:absolute after:outline-none after:h-10 after:w-10 after:bg-gray-50 after:top-1 after:left-1 after:flex after:justify-center after:items-center peer-hover:after:scale-75 peer-checked:after:content-['✔️'] after:-rotate-180 peer-checked:after:rotate-0">
+</div>
+
+</label>
+
+</div>
+
+
+<hr className="border-white/10"/>
+
 
 <button
 onClick={logout}
@@ -240,7 +319,6 @@ Logout
 </nav>
 
 
-
 {/* PROFILE MODAL */}
 
 {showProfile && supplier &&(
@@ -252,6 +330,7 @@ Logout
 <h2 className="text-2xl font-semibold mb-6">
 Supplier Profile
 </h2>
+
 
 <div className="space-y-5 text-sm">
 
@@ -289,7 +368,15 @@ Supplier Profile
 <p className="font-medium">{supplier.rollNo}</p>
 </div>
 
+<div>
+<p className="text-gray-400">Status</p>
+<p className="font-medium">
+{supplier.active ? "Active":"Inactive"}
+</p>
 </div>
+
+</div>
+
 
 <button
 onClick={()=>setShowProfile(false)}

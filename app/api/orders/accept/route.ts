@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { connectDB } from "@/lib/mongodb"
 import Order from "@/models/Order"
+import Supplier from "@/models/Supplier"
 import { pusherServer } from "@/lib/pusher-server"
 
 export async function POST(req: Request) {
@@ -10,6 +11,40 @@ export async function POST(req: Request) {
   const body = await req.json()
 
   const { orderId, supplierUID } = body
+
+  const supplier = await Supplier.findOne({
+    firebaseUID: supplierUID
+  })
+
+  if (!supplier) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Supplier not registered"
+      },
+      { status: 403 }
+    )
+  }
+
+  if (!supplier.approved) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Supplier not approved"
+      },
+      { status: 403 }
+    )
+  }
+
+  if (!supplier.active) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Supplier is inactive"
+      },
+      { status: 403 }
+    )
+  }
 
   const order = await Order.findOneAndUpdate(
     {

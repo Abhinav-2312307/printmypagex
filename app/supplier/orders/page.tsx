@@ -59,7 +59,9 @@ const acceptOrder = async(id:string)=>{
 
 if(!uid) return
 
-await fetch("/api/orders/accept",{
+try{
+
+const res = await fetch("/api/orders/accept",{
 method:"POST",
 headers:{
 "Content-Type":"application/json"
@@ -70,11 +72,22 @@ supplierUID:uid
 })
 })
 
+const data = await res.json()
+
+if(!res.ok || !data.success){
+toast.error(data.message || "Failed to accept order")
+return
+}
+
 toast.success("Order accepted")
 
 setAvailable(prev=>prev.filter(o=>o._id!==id))
 
 loadOrders(uid)
+
+}catch{
+toast.error("Failed to accept order")
+}
 
 }
 
