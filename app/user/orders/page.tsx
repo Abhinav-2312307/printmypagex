@@ -59,7 +59,7 @@ order._id===updatedOrder._id ? updatedOrder : order
 )
 )
 
-setSelectedOrder(prev =>
+setSelectedOrder((prev:any) =>
 prev && prev._id===updatedOrder._id ? updatedOrder : prev
 )
 
