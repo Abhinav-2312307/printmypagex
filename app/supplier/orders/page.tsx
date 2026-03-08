@@ -434,7 +434,7 @@ className={`px-5 py-1.5 text-xs rounded-full font-semibold tracking-wide ${getSt
 <button
 onClick={()=>{
 setSelectedOrder(order)
-setVerifiedPages(order.verifiedPages || order.pages)
+setVerifiedPages(order.verifiedPages ?? order.pages ?? 0)
 }}
 className="text-indigo-400 hover:text-indigo-300 text-sm font-medium"
 >
