@@ -25,7 +25,7 @@ return(
 
 <h1 className="relative text-6xl md:text-7xl font-bold">
 
-Print Anything On Campus
+Your Campus Print Partner
 
 <br/>
 
@@ -38,7 +38,7 @@ Fast. Simple. Reliable.
 </h1>
 
 <p className="mt-6 text-gray-600 dark:text-gray-400 max-w-xl mx-auto">
-Upload documents and nearby campus suppliers print them instantly.
+Upload your documents today, pick up your prints tomorrow on campus.
 </p>
 
 <div className="mt-10 flex justify-center gap-6 flex-wrap">
@@ -74,7 +74,7 @@ Why PrintMyPage
 
 <FeatureCard
 title="Instant Matching"
-desc="Your order instantly reaches nearby suppliers."
+desc="Your order instantly reaches all campus suppliers — or choose your favorite ❤️ one."
 direction="left"
 />
 
