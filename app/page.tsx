@@ -27,10 +27,10 @@ export default function Home() {
         <div className="mt-10 flex justify-center gap-6">
 
           <Link
-            href="/create-order"
+            href="/user/dashboard"
             className="px-6 py-3 bg-primary text-black rounded-xl font-semibold hover:opacity-90"
           >
-            Order Now
+            Dashboard
           </Link>
 
           <Link
@@ -130,7 +130,7 @@ export default function Home() {
 
       <footer className="border-t border-gray-200 dark:border-gray-800 py-10 text-center text-gray-500">
 
-        © {new Date().getFullYear()} PrintMyPage. Built for Campus.
+        © {new Date().getFullYear()} PrintMyPage. Built for Campus. By Abhinav Sahu (CS-3C)
 
       </footer>
 

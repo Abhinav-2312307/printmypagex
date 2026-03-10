@@ -5,7 +5,10 @@ import { ThemeProvider } from "next-themes"
 
 export const metadata: Metadata = {
   title: "PrintMyPage",
-  description: "Campus Printing Marketplace"
+  description: "Campus Printing Marketplace",
+  icons: {
+    icon: "/printer.svg"
+  }
 }
 
 export default function RootLayout({
