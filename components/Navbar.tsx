@@ -300,7 +300,7 @@ onClick={()=>setShowProfile(false)}
 />
 
 {/* modal */}
-<div className="relative z-10 w-[520px] max-w-[95%]">
+<div className="relative z-10 w-[520px] max-w-[95%] animate-[scale-in_0.9s_ease] ">
 
 <ProfileCard
 title="My Profile"
