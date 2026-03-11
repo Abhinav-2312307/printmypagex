@@ -4,6 +4,7 @@ type SendAppEmailInput = {
   to: string
   subject: string
   html: string
+  replyTo?: string
 }
 
 let cachedTransporter: nodemailer.Transporter | null = null
@@ -16,7 +17,7 @@ function extractEmail(raw: string | undefined) {
 }
 
 function getFromAddress() {
-  return process.env.EMAIL_FROM || process.env.GMAIL_USER || ""
+  return process.env.EMAIL_FROM || process.env.GMAIL_USER || process.env.SMTP_USER || ""
 }
 
 function maskEmail(email: string) {
@@ -91,8 +92,7 @@ export async function sendAppEmail(input: SendAppEmailInput) {
   })
 
   if (!from) {
-    console.warn("EMAIL_NOT_CONFIGURED: Missing sender address")
-    return
+    throw new Error("EMAIL_NOT_CONFIGURED: Missing sender address")
   }
 
   const transporter = getTransporter()
@@ -108,7 +108,7 @@ export async function sendAppEmail(input: SendAppEmailInput) {
       to: input.to,
       subject: input.subject,
       html: input.html,
-      replyTo: process.env.EMAIL_REPLY_TO || undefined
+      replyTo: input.replyTo || process.env.EMAIL_REPLY_TO || undefined
     })
     console.log("EMAIL_DEBUG: SMTP send success", {
       to: maskedTo,

@@ -5,12 +5,12 @@ export default function Contact() {
 
       <div className="contact-info">
         <p><strong>Name:</strong> Abhinav Sahu</p>
-        <p><strong>Class:</strong> AA37 CSE</p>
+        <p><strong>Class:</strong> CS-3H</p>
 
         <p>
           <strong>Email:</strong>
-          <a href="mailto:2k23.cs2312307@gmail.com">
-            2k23.cs2312307@gmail.com
+          <a href="mailto:abhinavrishi32@gmail.com">
+            abhinavrishi32@gmail.com
           </a>
         </p>
       </div>
