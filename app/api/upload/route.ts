@@ -8,6 +8,7 @@ import type { UploadApiResponse } from "cloudinary"
 import pdf from "pdf-parse/lib/pdf-parse.js"
 import { sendOrderCreatedNotifications } from "@/lib/order-email"
 import { authenticateUserRequest } from "@/lib/user-auth"
+import { isAcceptedUploadFile, requiresManualPageCount } from "@/lib/upload-file"
 
 export const runtime = "nodejs"
 
@@ -35,6 +36,7 @@ export async function POST(req: Request) {
     const userEmail = formData.get("userEmail") as string
     const requestType = formData.get("requestType") as string
     const supplier = formData.get("supplier") as string
+    const manualPageCountValue = String(formData.get("pageCount") || "").trim()
 
     // NEW FIELDS
     const alternatePhone = formData.get("alternatePhone") as string
@@ -63,16 +65,9 @@ export async function POST(req: Request) {
     }
 
     // Allowed file types
-    const allowedTypes = [
-      "application/pdf",
-      "image/png",
-      "image/jpeg",
-      "image/jpg"
-    ]
-
-    if (!allowedTypes.includes(file.type)) {
+    if (!isAcceptedUploadFile(file)) {
       return NextResponse.json(
-        { error: "Unsupported file type" },
+        { error: "Unsupported file type. Please upload PDF, DOC, DOCX, PNG, JPG or JPEG files." },
         { status: 400 }
       )
     }
@@ -115,8 +110,22 @@ export async function POST(req: Request) {
 
     // Detect pages
     let pages = 1
+    const needsManualPageCount = requiresManualPageCount(file)
 
-    if (file.type === "application/pdf") {
+    if (needsManualPageCount) {
+      const parsedPageCount = Number.parseInt(manualPageCountValue, 10)
+
+      if (!Number.isInteger(parsedPageCount) || parsedPageCount < 1) {
+        return NextResponse.json(
+          { error: "Enter a valid page count for DOC or DOCX files." },
+          { status: 400 }
+        )
+      }
+
+      pages = parsedPageCount
+    }
+
+    if (!needsManualPageCount && file.type === "application/pdf") {
       try {
         const data = await pdf(buffer)
         pages = data.numpages

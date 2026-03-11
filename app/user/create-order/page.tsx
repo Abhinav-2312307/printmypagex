@@ -1,11 +1,16 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { auth } from "@/lib/firebase"
 import Navbar from "@/components/Navbar"
 import AuthGuard from "@/components/AuthGuard"
 import toast from "react-hot-toast"
 import { authFetch } from "@/lib/client-auth"
+import {
+  isAcceptedUploadFile,
+  requiresManualPageCount,
+  UPLOAD_ACCEPT_ATTRIBUTE
+} from "@/lib/upload-file"
 
 export default function CreateOrderPage() {
 
@@ -13,6 +18,8 @@ export default function CreateOrderPage() {
   const [printType, setPrintType] = useState("bw")
   const [requestType, setRequestType] = useState("global")
   const [supplier, setSupplier] = useState("")
+  const [pageCount, setPageCount] = useState("")
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [loadingSuppliers, setLoadingSuppliers] = useState(false)
@@ -44,6 +51,24 @@ export default function CreateOrderPage() {
       return
     }
 
+    if (!isAcceptedUploadFile(file)) {
+      toast.error("Upload PDF, DOC, DOCX, PNG, JPG or JPEG files only.")
+      return
+    }
+
+    let manualPageCount = ""
+
+    if (requiresManualPageCount(file)) {
+      const parsedPageCount = Number.parseInt(pageCount, 10)
+
+      if (!Number.isInteger(parsedPageCount) || parsedPageCount < 1) {
+        toast.error("Enter a valid page count for DOC or DOCX files.")
+        return
+      }
+
+      manualPageCount = String(parsedPageCount)
+    }
+
     const user = auth.currentUser
 
     if (!user) return
@@ -59,6 +84,10 @@ export default function CreateOrderPage() {
     formData.append("userEmail", fallbackEmail)
     formData.append("requestType", requestType)
     formData.append("supplier", supplier)
+
+    if (manualPageCount) {
+      formData.append("pageCount", manualPageCount)
+    }
 
     const res = await authFetch("/api/upload", {
       method: "POST",
@@ -77,6 +106,10 @@ export default function CreateOrderPage() {
     
     toast.success(`Pages: ${data.pages} | Estimated Price: ₹${data.estimatedPrice}`)
     setFile(null)
+    setPageCount("")
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
   }
 
   return (
@@ -99,12 +132,44 @@ export default function CreateOrderPage() {
                 Upload File
               </label>
               <input
+                ref={fileInputRef}
                 type="file"
                 required
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                accept={UPLOAD_ACCEPT_ATTRIBUTE}
+                onChange={(e) => {
+                  const selectedFile = e.target.files?.[0] || null
+                  setFile(selectedFile)
+
+                  if (!requiresManualPageCount(selectedFile)) {
+                    setPageCount("")
+                  }
+                }}
                 className="w-full bg-dark p-3 rounded-lg border border-gray-700"
               />
+              <p className="mt-2 text-xs text-gray-400">
+                Accepted: PDF, DOC, DOCX, PNG, JPG, JPEG
+              </p>
             </div>
+
+            {requiresManualPageCount(file) && (
+              <div>
+                <label className="block mb-2 text-sm text-gray-400">
+                  Page Count
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={pageCount}
+                  onChange={(e) => setPageCount(e.target.value.replace(/\D/g, ""))}
+                  placeholder="Enter total pages in document"
+                  className="w-full bg-dark p-3 rounded-lg border border-gray-700"
+                />
+                <p className="mt-2 text-xs text-gray-400">
+                  Required for DOC and DOCX because page count is entered manually.
+                </p>
+              </div>
+            )}
 
             <div>
               <label className="block mb-2 text-sm text-gray-400">

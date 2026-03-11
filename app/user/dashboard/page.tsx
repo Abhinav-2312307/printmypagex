@@ -1,11 +1,16 @@
 "use client"
 
 import RoleGuard from "@/components/RoleGuard"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { auth } from "@/lib/firebase"
 import DashboardNavbar from "@/components/DashboardNavbar"
 import toast from "react-hot-toast"
 import { authFetch } from "@/lib/client-auth"
+import {
+  isAcceptedUploadFile,
+  requiresManualPageCount,
+  UPLOAD_ACCEPT_ATTRIBUTE
+} from "@/lib/upload-file"
 
 import {
   ResponsiveContainer,
@@ -43,6 +48,8 @@ export default function UserDashboard() {
   })
 
   const [file, setFile] = useState<File | null>(null)
+  const [pageCount, setPageCount] = useState("")
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [alternatePhone, setAlternatePhone] = useState("")
   const [printType, setPrintType] = useState("bw")
 
@@ -159,6 +166,24 @@ export default function UserDashboard() {
       return
     }
 
+    if(!isAcceptedUploadFile(file)){
+      toast.error("Upload PDF, DOC, DOCX, PNG, JPG or JPEG files only.")
+      return
+    }
+
+    let manualPageCount = ""
+
+    if(requiresManualPageCount(file)){
+      const parsedPageCount = Number.parseInt(pageCount,10)
+
+      if(!Number.isInteger(parsedPageCount) || parsedPageCount < 1){
+        toast.error("Enter a valid page count for DOC or DOCX files.")
+        return
+      }
+
+      manualPageCount = String(parsedPageCount)
+    }
+
     const user = auth.currentUser
     if(!user) return
 
@@ -182,6 +207,10 @@ export default function UserDashboard() {
     formData.append("duplex",String(duplex))
     formData.append("instruction",instruction)
 
+    if(manualPageCount){
+      formData.append("pageCount",manualPageCount)
+    }
+
     const res=await authFetch("/api/upload",{
       method:"POST",
       body:formData
@@ -201,6 +230,10 @@ export default function UserDashboard() {
     setOrders(prev=>[data.order,...prev])
 
     setFile(null)
+    setPageCount("")
+    if(fileInputRef.current){
+      fileInputRef.current.value = ""
+    }
     setInstruction("")
     setAlternatePhone("")
     setDuplex(false)
@@ -480,10 +513,35 @@ className="input w-full h-24"
 />
 
 <input
+ref={fileInputRef}
 type="file"
 required
-onChange={(e)=>setFile(e.target.files?.[0] || null)}
+accept={UPLOAD_ACCEPT_ATTRIBUTE}
+onChange={(e)=>{
+const selectedFile = e.target.files?.[0] || null
+setFile(selectedFile)
+
+if(!requiresManualPageCount(selectedFile)){
+setPageCount("")
+}
+}}
 />
+
+<p className="text-xs text-gray-400">
+Accepted: PDF, DOC, DOCX, PNG, JPG, JPEG
+</p>
+
+{requiresManualPageCount(file) && (
+<input
+type="number"
+min="1"
+required
+placeholder="Enter total pages in document"
+value={pageCount}
+onChange={(e)=>setPageCount(e.target.value.replace(/\D/g,""))}
+className="input w-full"
+/>
+)}
 
 <button
 type="submit"
