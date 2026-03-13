@@ -15,7 +15,24 @@ return(
 
 <SmoothScroll/>
 <CursorDepth/>
-<Navbar/>
+<Navbar
+navButtons={[
+{
+label:"Pricing",
+href:"/pricing",
+variant:"glass"
+},
+{
+label:"FAQ + Flow",
+href:"/faq",
+variant:"accent"
+},
+{
+label:"Contact",
+href:"/contact",
+variant:"contact"
+}
+]}/>
 
 {/* HERO */}
 

@@ -480,7 +480,17 @@ export default function Navbar({
                 </button>
 
                 {open ? (
-                  <div className="absolute right-0 z-50 mt-4 w-64 space-y-3 rounded-2xl border border-gray-200 bg-white/85 p-4 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-white/10">
+                  <div className="absolute right-0 z-50 mt-4 w-64 space-y-3
+                    rounded-2xl
+                    bg-white/70
+                    backdrop-blur-3xl
+                    border border-gray-200
+                    shadow-[0_8px_40px_rgba(0,0,0,0.2)]
+                    p-4
+                    dark:border-white/20
+                    dark:bg-black/40
+                    dark:shadow-[0_8px_40px_rgba(0,0,0,0.4)]
+                    ">
                     <div className="break-all border-b border-gray-300 pb-2 text-sm text-gray-700 dark:border-white/10 dark:text-gray-300">
                       {user.email}
                     </div>

@@ -34,3 +34,25 @@ body {
 *{
 transition: background-color 0.2s ease, color 0.2s ease;
 }
+
+.liquid-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(circle at center, black, transparent 82%);
+}
+
+@keyframes liquid-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0) scale(1.04);
+  }
+}
+
+.liquid-float {
+  animation: liquid-float 8s ease-in-out infinite;
+}

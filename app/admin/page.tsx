@@ -37,8 +37,22 @@ import CandleThemeToggle from "@/components/CandleThemeToggle"
 import HeroBackground from "@/components/HeroBackground"
 import CursorDepth from "@/components/CursorDepth"
 import FeedbackPanel, { type AdminFeedback } from "@/components/admin/FeedbackPanel"
+import FaqManager from "@/components/admin/FaqManager"
+import {
+  defaultFaqContentSnapshot,
+  type FAQContentSnapshot
+} from "@/lib/faq-content"
 
-type Tab = "overview" | "users" | "suppliers" | "orders" | "payments" | "payouts" | "feedback" | "danger"
+type Tab =
+  | "overview"
+  | "users"
+  | "suppliers"
+  | "orders"
+  | "payments"
+  | "payouts"
+  | "feedback"
+  | "faqs"
+  | "danger"
 
 type OverviewResponse = {
   stats: {
@@ -318,6 +332,7 @@ export default function AdminPortalPage() {
   const [payments, setPayments] = useState<PaymentLog[]>([])
   const [payoutRequests, setPayoutRequests] = useState<AdminPayoutRequest[]>([])
   const [feedbacks, setFeedbacks] = useState<AdminFeedback[]>([])
+  const [faqContent, setFaqContent] = useState<FAQContentSnapshot>(defaultFaqContentSnapshot)
 
   const [adminEmail, setAdminEmail] = useState("")
   const [menuOpen, setMenuOpen] = useState(false)
@@ -400,14 +415,15 @@ export default function AdminPortalPage() {
   }, [])
 
   const loadAll = useCallback(async () => {
-    const [overviewRes, usersRes, suppliersRes, ordersRes, paymentsRes, payoutsRes, feedbacksRes] = await Promise.all([
+    const [overviewRes, usersRes, suppliersRes, ordersRes, paymentsRes, payoutsRes, feedbacksRes, faqsRes] = await Promise.all([
       adminFetch<OverviewResponse>("/api/admin/overview"),
       adminFetch<{ users: AdminUser[] }>("/api/admin/users"),
       adminFetch<{ suppliers: AdminSupplier[] }>("/api/admin/suppliers"),
       adminFetch<{ orders: AdminOrder[] }>("/api/admin/orders"),
       adminFetch<{ payments: PaymentLog[] }>("/api/admin/payments"),
       adminFetch<{ requests: AdminPayoutRequest[] }>("/api/admin/payout-requests"),
-      adminFetch<{ feedbacks: AdminFeedback[] }>("/api/admin/feedback")
+      adminFetch<{ feedbacks: AdminFeedback[] }>("/api/admin/feedback"),
+      adminFetch<{ content: FAQContentSnapshot }>("/api/admin/faqs")
     ])
 
     setOverview(overviewRes)
@@ -417,6 +433,7 @@ export default function AdminPortalPage() {
     setPayments(paymentsRes.payments || [])
     setPayoutRequests(payoutsRes.requests || [])
     setFeedbacks(feedbacksRes.feedbacks || [])
+    setFaqContent(faqsRes.content || defaultFaqContentSnapshot)
     setLastSyncedAt(new Date())
   }, [adminFetch])
 
@@ -514,6 +531,27 @@ export default function AdminPortalPage() {
   const logout = async () => {
     await signOut(auth)
     window.location.href = "/admin/login"
+  }
+
+  const saveFaqContent = async (nextContent: FAQContentSnapshot) => {
+    try {
+      setBusyAction("save-faqs")
+      setMessage("")
+      setError("")
+
+      const response = await adminFetch<{ content: FAQContentSnapshot; message?: string }>("/api/admin/faqs", {
+        method: "PUT",
+        body: JSON.stringify(nextContent)
+      })
+
+      setFaqContent(response.content || defaultFaqContentSnapshot)
+      setMessage(response.message || "FAQ content updated")
+      setLastSyncedAt(new Date())
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError))
+    } finally {
+      setBusyAction("")
+    }
   }
 
   const runUserAction = async (firebaseUID: string, action: string, role?: string) => {
@@ -1177,6 +1215,7 @@ export default function AdminPortalPage() {
     { value: "payments", label: "Payments" },
     { value: "payouts", label: "Payouts" },
     { value: "feedback", label: "Feedback" },
+    { value: "faqs", label: "FAQs" },
     { value: "danger", label: "Danger" }
   ]
 
@@ -2265,6 +2304,14 @@ export default function AdminPortalPage() {
 
           {activeTab === "feedback" ? (
             <FeedbackPanel feedbacks={feedbacks} />
+          ) : null}
+
+          {activeTab === "faqs" ? (
+            <FaqManager
+              content={faqContent}
+              saving={busyAction === "save-faqs"}
+              onSave={saveFaqContent}
+            />
           ) : null}
 
           {activeTab === "danger" ? (

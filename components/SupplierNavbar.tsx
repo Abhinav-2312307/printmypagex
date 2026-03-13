@@ -216,6 +216,19 @@ Orders
 
 )}
 
+{pathname === "/supplier" && (
+<button
+onClick={()=>router.push("/supplier/faq")}
+className="group relative flex items-center gap-2 px-5 py-2 rounded-full border border-indigo-300/20 bg-gradient-to-r from-indigo-500 to-cyan-500 text-white transition-all duration-300 hover:scale-[1.03]"
+>
+
+<span className="transition-all duration-300 group-hover:translate-x-[2px]">
+Guide
+</span>
+
+</button>
+)}
+
 {!user && (
 
 <div className="flex items-center gap-3">
