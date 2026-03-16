@@ -5,6 +5,19 @@ import User from "@/models/User"
 import { authenticateUserRequest } from "@/lib/user-auth"
 import { isOwnerEmail } from "@/lib/owner-access"
 
+type MinimalUser = {
+  firebaseUID?: string
+  name?: string
+  email?: string
+  phone?: string
+  rollNo?: string
+  branch?: string
+  year?: string | number
+  photoURL?: string
+  firebasePhotoURL?: string
+  role?: string
+}
+
 export async function GET(req: Request) {
   const auth = await authenticateUserRequest(req, {
     requireProfile: false,
@@ -23,11 +36,11 @@ export async function GET(req: Request) {
     .lean()
 
   const firebaseUIDs = supplierDocs.map((supplier) => String(supplier.firebaseUID || "")).filter(Boolean)
-  const userDocs = await User.find({
+  const userDocs = (await User.find({
     firebaseUID: { $in: firebaseUIDs }
   })
-    .select("firebaseUID name email phone rollNo branch year photoURL firebasePhotoURL")
-    .lean()
+    .select("firebaseUID name email phone rollNo branch year photoURL firebasePhotoURL role")
+    .lean()) as MinimalUser[]
 
   const userMap = new Map(userDocs.map((user) => [String(user.firebaseUID || ""), user]))
 
@@ -41,7 +54,10 @@ export async function GET(req: Request) {
     year: String(supplier.year || userMap.get(String(supplier.firebaseUID || ""))?.year || ""),
     photoURL: String(userMap.get(String(supplier.firebaseUID || ""))?.photoURL || supplier.photoURL || ""),
     firebasePhotoURL: String(userMap.get(String(supplier.firebaseUID || ""))?.firebasePhotoURL || supplier.firebasePhotoURL || ""),
-    isOwner: isOwnerEmail(String(userMap.get(String(supplier.firebaseUID || ""))?.email || supplier.email || "")),
+    isOwner: Boolean(
+      isOwnerEmail(String(userMap.get(String(supplier.firebaseUID || ""))?.email || supplier.email || "")) ||
+      userMap.get(String(supplier.firebaseUID || ""))?.role === "ADMIN"
+    ),
     displayPhotoURL: String(
       userMap.get(String(supplier.firebaseUID || ""))?.photoURL ||
       supplier.photoURL ||

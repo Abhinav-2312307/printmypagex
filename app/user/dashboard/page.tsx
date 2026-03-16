@@ -25,6 +25,10 @@ import SupplierSelector, { type SupplierSelectorItem } from "@/components/Suppli
 
 type DashboardOrder = {
   createdAt: string
+  status: string
+  paymentStatus: string
+  finalPrice?: number | null
+  estimatedPrice?: number | null
 }
 
 type UserDashboardProfile = {

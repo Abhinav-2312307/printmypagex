@@ -402,6 +402,9 @@ selectedOrder?.supplierIsOwner ||
 selectedSupplierProfile?.isOwner ||
 isOwnerEmail(selectedSupplierProfile?.email)
 )
+const selectedSupplierPreview = showSupplierPeek && !showSupplierCard
+? selectedSupplierProfile
+: null
 
 
 
@@ -606,7 +609,7 @@ Order Details
 	)}
 </p>
 
-	{showSupplierPeek && selectedOrder.supplierProfile && !showSupplierCard && (
+	{selectedSupplierPreview && (
 	<div
 	onMouseEnter={()=>setShowSupplierPeek(true)}
 	onMouseLeave={()=>setShowSupplierPeek(false)}
@@ -618,9 +621,9 @@ Order Details
 	>
 	<div className="flex items-start gap-3">
 	<ProfileAvatar
-	name={selectedSupplierProfile.name || selectedOrder.supplierName || "Supplier"}
-	photoURL={selectedSupplierProfile.displayPhotoURL || selectedSupplierProfile.photoURL || selectedSupplierProfile.firebasePhotoURL}
-	alt={selectedSupplierProfile.name || selectedOrder.supplierName || "Supplier"}
+	name={selectedSupplierPreview.name || selectedOrder.supplierName || "Supplier"}
+	photoURL={selectedSupplierPreview.displayPhotoURL || selectedSupplierPreview.photoURL || selectedSupplierPreview.firebasePhotoURL}
+	alt={selectedSupplierPreview.name || selectedOrder.supplierName || "Supplier"}
 	isOwner={selectedSupplierIsOwner}
 	className="h-14 w-14 shrink-0 rounded-2xl"
 	initialsClassName="text-lg"
@@ -634,15 +637,15 @@ Order Details
 	</p>
 	<div className="flex flex-wrap items-center gap-2">
 	<p className={`${selectedSupplierIsOwner ? "text-lg font-semibold text-amber-100" : "font-semibold text-white"}`}>
-	{selectedSupplierProfile.name || selectedOrder.supplierName}
+	{selectedSupplierPreview.name || selectedOrder.supplierName}
 	</p>
-	<OwnerBadge email={selectedSupplierProfile.email} isOwner={selectedSupplierIsOwner} className="text-[9px]" label="Platform Owner"/>
+	<OwnerBadge email={selectedSupplierPreview.email} isOwner={selectedSupplierIsOwner} className="text-[9px]" label="Platform Owner"/>
 	</div>
 	<p className={`text-sm ${selectedSupplierIsOwner ? "text-amber-50/88" : "text-gray-300"}`}>
-	{selectedSupplierProfile.email || "No email"}
+	{selectedSupplierPreview.email || "No email"}
 	</p>
 	<p className={`text-sm ${selectedSupplierIsOwner ? "text-amber-100/78" : "text-gray-300"}`}>
-	{selectedSupplierProfile.phone || "No phone"}
+	{selectedSupplierPreview.phone || "No phone"}
 	</p>
 	<p className={`mt-2 text-xs ${selectedSupplierIsOwner ? "text-amber-200/76" : "text-indigo-300"}`}>
 	Click the name to open the full profile card.

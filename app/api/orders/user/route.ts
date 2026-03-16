@@ -19,6 +19,10 @@ type MinimalSupplier = {
   firebasePhotoURL?: string
 }
 
+type MinimalUser = MinimalSupplier & {
+  role?: string
+}
+
 const ORDER_SELECT_FIELDS = [
   "userUID",
   "supplierUID",
@@ -91,11 +95,11 @@ export async function GET(req: Request) {
       .select("firebaseUID name email phone rollNo branch year photoURL firebasePhotoURL")
       .lean()) as MinimalSupplier[]
 
-    const users = await User.find({
+    const users = (await User.find({
       firebaseUID: { $in: supplierUIDs }
     })
-      .select("firebaseUID name email phone rollNo branch year photoURL firebasePhotoURL")
-      .lean()
+      .select("firebaseUID name email phone rollNo branch year photoURL firebasePhotoURL role")
+      .lean()) as MinimalUser[]
 
     const supplierMap = new Map<string, MinimalSupplier>()
     suppliers.forEach((supplier) => {
@@ -109,7 +113,10 @@ export async function GET(req: Request) {
       const supplier = supplierMap.get(supplierUID)
       const linkedUser = userMap.get(supplierUID)
       const supplierEmail = String(linkedUser?.email || supplier?.email || "")
-      const supplierIsOwner = isOwnerEmail(supplierEmail)
+      const supplierIsOwner = Boolean(
+        isOwnerEmail(supplierEmail) ||
+        linkedUser?.role === "ADMIN"
+      )
 
       const supplierProfile = supplier
         ? {
