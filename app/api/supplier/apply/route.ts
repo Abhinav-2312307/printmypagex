@@ -4,6 +4,7 @@ import Supplier from "@/models/Supplier"
 import User from "@/models/User"
 import { isAlphabeticText, isNumeric, normalizeText } from "@/lib/form-validation"
 import { authenticateUserRequest } from "@/lib/user-auth"
+import { mergeUserRoles } from "@/lib/user-roles"
 
 export async function POST(req: Request){
 
@@ -69,20 +70,31 @@ error: "Year must be a number between 1 and 8"
 const existing = await Supplier.findOne({
 firebaseUID: body.firebaseUID
 })
+const existingUser = await User.findOne({
+firebaseUID: body.firebaseUID
+}).lean()
+const supplierRoleState = mergeUserRoles(existingUser, ["SUPPLIER"], {
+preferredRole: "SUPPLIER"
+})
 
 if(existing){
 await User.findOneAndUpdate(
 { firebaseUID: body.firebaseUID },
 {
+$set: {
 firebaseUID: body.firebaseUID,
-email: body.email || undefined,
-firebasePhotoURL: body.photoURL || undefined,
+email: body.email || existingUser?.email || undefined,
+firebasePhotoURL: body.photoURL || existingUser?.firebasePhotoURL || undefined,
 name,
 phone,
 rollNo,
 branch,
 year: yearNum,
-role: "SUPPLIER"
+role: supplierRoleState.role,
+roles: supplierRoleState.roles,
+approved: existingUser?.approved ?? true,
+active: existingUser?.active ?? true
+}
 },
 {
 upsert: true,
@@ -122,15 +134,20 @@ await User.findOneAndUpdate(
 { firebaseUID: body.firebaseUID },
 
 {
+$set: {
 firebaseUID: body.firebaseUID,
-email: body.email || undefined,
-firebasePhotoURL: body.photoURL || undefined,
+email: body.email || existingUser?.email || undefined,
+firebasePhotoURL: body.photoURL || existingUser?.firebasePhotoURL || undefined,
 name,
 phone,
 rollNo,
 branch,
 year: yearNum,
-role: "SUPPLIER"
+role: supplierRoleState.role,
+roles: supplierRoleState.roles,
+approved: existingUser?.approved ?? true,
+active: existingUser?.active ?? true
+}
 },
 
 {

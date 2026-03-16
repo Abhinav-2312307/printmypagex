@@ -4,6 +4,7 @@ import Supplier from "@/models/Supplier"
 import User from "@/models/User"
 import { isAlphabeticText, isNumeric, normalizeText } from "@/lib/form-validation"
 import { authenticateUserRequest } from "@/lib/user-auth"
+import { mergeUserRoles } from "@/lib/user-roles"
 
 export async function POST(req: Request) {
   try {
@@ -66,6 +67,11 @@ export async function POST(req: Request) {
       )
     }
 
+    const existingUser = await User.findOne({ firebaseUID }).lean()
+    const supplierRoleState = mergeUserRoles(existingUser, ["SUPPLIER"], {
+      preferredRole: "SUPPLIER"
+    })
+
     await User.findOneAndUpdate(
       { firebaseUID },
       {
@@ -73,7 +79,8 @@ export async function POST(req: Request) {
           name,
           rollNo,
           phone,
-          role: "SUPPLIER"
+          role: supplierRoleState.role,
+          roles: supplierRoleState.roles
         }
       },
       { new: true }

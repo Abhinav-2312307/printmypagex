@@ -22,11 +22,22 @@ type SupplierProfile = {
   displayPhotoURL?: string
 }
 
+function sanitizeAvatarUrl(value: unknown) {
+const url = String(value || "").trim()
+
+if(!url || url === "null" || url === "undefined"){
+return ""
+}
+
+return url
+}
+
 export default function SupplierNavbar() {
 
 const router = useRouter()
 const pathname = usePathname()
 const dropdownRef = useRef<HTMLDivElement>(null)
+const mobileMenuRef = useRef<HTMLDivElement>(null)
 
 const {theme,setTheme} = useTheme()
 
@@ -34,6 +45,7 @@ const [user,setUser] = useState<User | null>(null)
 const [supplier,setSupplier] = useState<SupplierProfile | null>(null)
 
 const [open,setOpen] = useState(false)
+const [mobileMenuOpen,setMobileMenuOpen] = useState(false)
 const [showProfile,setShowProfile] = useState(false)
 const [togglingActive,setTogglingActive] = useState(false)
 
@@ -41,6 +53,8 @@ const [mounted,setMounted] = useState(false)
 
 const [isEditingProfile,setIsEditingProfile] = useState(false)
 const [savingProfile,setSavingProfile] = useState(false)
+const [failedAvatarUrl,setFailedAvatarUrl] = useState("")
+const [failedProfilePhotoUrl,setFailedProfilePhotoUrl] = useState("")
 
 const [photoFile,setPhotoFile] = useState<File | null>(null)
 const [photoPreview,setPhotoPreview] = useState("")
@@ -57,13 +71,14 @@ useEffect(()=>{
 const unsub = onAuthStateChanged(auth,(u)=>{
 setUser(u)
 
-if(!u){
-setSupplier(null)
-setOpen(false)
-}
-})
-return ()=>unsub()
-},[])
+	if(!u){
+	setSupplier(null)
+	setOpen(false)
+	setMobileMenuOpen(false)
+	}
+	})
+	return ()=>unsub()
+	},[])
 
 const refreshSupplier = async(uid:string)=>{
 const res = await authFetch(`/api/supplier/me?firebaseUID=${uid}`)
@@ -72,17 +87,24 @@ setSupplier(data.supplier || null)
 }
 
 useEffect(()=>{
-if(!user){
-setSupplier(null)
-return
-}
-refreshSupplier(user.uid)
-},[user])
+	if(!user){
+	setSupplier(null)
+	return
+	}
+	refreshSupplier(user.uid)
+	},[user])
 
-const logout = async()=>{
-await signOut(auth)
-router.push("/supplier")
-}
+	useEffect(()=>{
+	setOpen(false)
+	setMobileMenuOpen(false)
+	},[pathname])
+
+	const logout = async()=>{
+	setOpen(false)
+	setMobileMenuOpen(false)
+	await signOut(auth)
+	router.push("/supplier")
+	}
 
 const toggleActive = async()=>{
 if(!user || !supplier || togglingActive) return
@@ -117,20 +139,25 @@ setTogglingActive(false)
 }
 }
 
-const openProfile = ()=>{
-if(!supplier) return
+	const openProfile = ()=>{
+	if(!supplier) return
 
-setProfileForm({
-name:supplier.name || "",
+	setOpen(false)
+	setMobileMenuOpen(false)
+
+	setProfileForm({
+	name:supplier.name || "",
 rollNo:supplier.rollNo || "",
 phone:supplier.phone || ""
 })
 
 setPhotoPreview(
+sanitizeAvatarUrl(
 supplier.displayPhotoURL ||
 supplier.photoURL ||
 supplier.firebasePhotoURL ||
 ""
+)
 )
 
 setPhotoFile(null)
@@ -140,14 +167,17 @@ setShowProfile(true)
 
 useEffect(()=>{
 
-const handleClickOutside=(event:MouseEvent)=>{
-if(
-dropdownRef.current &&
-!dropdownRef.current.contains(event.target as Node)
-){
-setOpen(false)
-}
-}
+	const handleClickOutside=(event:MouseEvent)=>{
+	const target = event.target as Node
+
+	if(dropdownRef.current && !dropdownRef.current.contains(target)){
+	setOpen(false)
+	}
+
+	if(mobileMenuRef.current && !mobileMenuRef.current.contains(target)){
+	setMobileMenuOpen(false)
+	}
+	}
 
 document.addEventListener("mousedown",handleClickOutside)
 
@@ -156,71 +186,317 @@ return ()=>document.removeEventListener("mousedown",handleClickOutside)
 },[])
 
 const resolvedNavbarPhoto =
+sanitizeAvatarUrl(
 supplier?.displayPhotoURL ||
 supplier?.photoURL ||
 supplier?.firebasePhotoURL ||
 ""
+)
 
-const userInitial =
-user?.displayName?.charAt(0)?.toUpperCase() ||
-user?.email?.charAt(0)?.toUpperCase() ||
-"U"
+	const userInitial =
+	supplier?.name?.charAt(0)?.toUpperCase() ||
+	user?.displayName?.charAt(0)?.toUpperCase() ||
+	user?.email?.charAt(0)?.toUpperCase() ||
+	"U"
 
-return(
-<>
+	const primaryNavHref =
+	pathname === "/supplier/orders" ? "/supplier/dashboard" : "/supplier/orders"
 
-<div className="h-28 md:h-32"/>
+	const primaryNavLabel =
+	pathname === "/supplier/orders" ? "Dashboard" : "Orders"
 
-<div className="w-full flex justify-center fixed top-6 z-50">
+	const primaryNavDescription =
+	pathname === "/supplier/orders"
+	? "Return to supplier hub"
+	: "Track available requests"
 
-<nav className="flex items-center justify-between px-12 py-4 w-[95%] max-w-[1400px] rounded-3xl backdrop-blur-3xl bg-white/70 dark:bg-black/40 border border-gray-200 dark:border-white/20 shadow-[0_8px_40px_rgba(0,0,0,0.2)] dark:shadow-[0_8px_40px_rgba(0,0,0,0.4)] hover:scale-[1.01] transition-all duration-300">
+	const handleRoute = (href:string)=>{
+	setOpen(false)
+	setMobileMenuOpen(false)
+	router.push(href)
+	}
 
-<h1
-className="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent cursor-pointer"
-onClick={()=>router.push("/supplier")}
+const saveSupplierProfile = async()=>{
+const currentUser = auth.currentUser
+
+if(!currentUser || !supplier){
+toast.error("Please login again")
+return
+}
+
+if(!profileForm.name.trim() || !/^[A-Za-z ]+$/.test(profileForm.name.trim())){
+toast.error("Name must contain only text")
+return
+}
+
+if(!/^\d+$/.test(profileForm.rollNo.trim())){
+toast.error("Roll number must be numeric")
+return
+}
+
+if(!/^\d{10,15}$/.test(profileForm.phone.trim())){
+toast.error("Phone must be 10 to 15 digits")
+return
+}
+
+setSavingProfile(true)
+
+try{
+
+let nextPhotoURL = sanitizeAvatarUrl(
+supplier.displayPhotoURL ||
+supplier.photoURL ||
+supplier.firebasePhotoURL ||
+""
+)
+
+if(photoFile){
+const photoFormData = new FormData()
+photoFormData.append("file",photoFile)
+photoFormData.append("firebaseUID",currentUser.uid)
+
+const photoRes = await authFetch("/api/supplier/upload-photo",{
+method:"POST",
+body:photoFormData
+})
+
+const photoData = await photoRes.json()
+
+if(!photoRes.ok || !photoData.success){
+toast.error(photoData.message || "Failed to upload profile photo")
+setSavingProfile(false)
+return
+}
+
+nextPhotoURL = sanitizeAvatarUrl(photoData.photoURL || nextPhotoURL)
+}
+
+const res = await authFetch("/api/supplier/update-profile",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+firebaseUID:currentUser.uid,
+name:profileForm.name.trim(),
+rollNo:profileForm.rollNo.trim(),
+phone:profileForm.phone.trim()
+})
+})
+
+const data = await res.json()
+
+if(!res.ok || !data.success){
+toast.error(data.message || "Failed to update supplier profile")
+setSavingProfile(false)
+return
+}
+
+const nextSupplier = {
+...supplier,
+...data.supplier,
+photoURL: nextPhotoURL || data.supplier?.photoURL || supplier.photoURL || "",
+displayPhotoURL:
+nextPhotoURL ||
+data.supplier?.displayPhotoURL ||
+data.supplier?.photoURL ||
+data.supplier?.firebasePhotoURL ||
+supplier.displayPhotoURL ||
+supplier.photoURL ||
+supplier.firebasePhotoURL ||
+""
+}
+
+setSupplier(nextSupplier)
+setPhotoPreview(
+sanitizeAvatarUrl(
+nextSupplier.displayPhotoURL ||
+nextSupplier.photoURL ||
+nextSupplier.firebasePhotoURL ||
+""
+)
+)
+setPhotoFile(null)
+setIsEditingProfile(false)
+toast.success("Profile updated")
+
+}catch{
+toast.error("Failed to update supplier profile")
+}
+
+setSavingProfile(false)
+}
+
+	return(
+	<>
+
+	<div className="h-24 md:h-32"/>
+
+	<div className="fixed top-4 z-50 flex w-full justify-center px-3 md:top-6 md:px-0">
+
+	<nav className="flex w-full max-w-[1400px] items-center justify-between rounded-3xl border border-gray-200 bg-white/70 px-4 py-3 shadow-[0_8px_40px_rgba(0,0,0,0.2)] backdrop-blur-3xl transition-all duration-300 hover:scale-[1.01] dark:border-white/20 dark:bg-black/40 dark:shadow-[0_8px_40px_rgba(0,0,0,0.4)] md:px-10 md:py-4">
+
+	<h1
+	className="cursor-pointer bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-xl font-bold text-transparent md:text-2xl"
+	onClick={()=>handleRoute("/supplier")}
+	>
+	PrintMyPage
+	</h1>
+
+	<div className="flex items-center gap-2 sm:gap-3 md:gap-6">
+
+	<div className="hidden items-center gap-3 md:flex">
+
+	{/* Primary Navigation */}
+
+	{user ? (
+
+	<button
+	onClick={()=>handleRoute(primaryNavHref)}
+	className="group relative"
+	>
+
+<div className="relative overflow-hidden rounded-xl bg-gradient-to-bl from-gray-900 via-gray-950 to-black p-[1px] shadow-2xl shadow-emerald-500/20">
+
+<div className="relative flex items-center gap-3 rounded-xl bg-gray-950 px-4 py-2.5 transition-all duration-300 group-hover:bg-gray-950/50">
+
+<div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-600 transition-transform duration-300 group-hover:scale-110">
+
+<svg
+stroke="currentColor"
+viewBox="0 0 24 24"
+fill="none"
+className="h-4 w-4 text-white"
+aria-hidden="true"
 >
-PrintMyPage
-</h1>
+<path
+d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+strokeWidth="2"
+strokeLinejoin="round"
+strokeLinecap="round"
+/>
+</svg>
 
-<div className="flex items-center gap-6">
+<div className="absolute inset-0 rounded-lg bg-emerald-500/50 blur-sm transition-all duration-300 group-hover:blur-md" />
 
-{/* Primary Navigation */}
+</div>
 
-{user ? (
+	<div className="flex flex-col items-start text-left leading-tight">
+	<span className="text-sm font-semibold text-white">
+	{primaryNavLabel}
+	</span>
+	<span className="text-[10px] font-medium text-emerald-400/80">
+	{primaryNavDescription}
+	</span>
+	</div>
 
-<button
-onClick={()=>router.push(pathname === "/supplier/orders" ? "/supplier/dashboard":"/supplier/orders")}
-className="group relative flex items-center gap-2 px-5 py-2 rounded-full border border-gray-300 dark:border-white/20 bg-white/80 dark:bg-white/5 backdrop-blur-md text-gray-700 dark:text-gray-200 hover:text-black dark:hover:text-white transition-all duration-300 hover:bg-gray-200 dark:hover:bg-white/10"
->
+<div className="ml-auto flex items-center gap-1">
+<div className="h-1.5 w-1.5 rounded-full bg-emerald-500 transition-transform duration-300 group-hover:scale-150" />
+<div className="h-1.5 w-1.5 rounded-full bg-emerald-500/50 transition-transform duration-300 group-hover:scale-150 group-hover:delay-100" />
+<div className="h-1.5 w-1.5 rounded-full bg-emerald-500/30 transition-transform duration-300 group-hover:scale-150 group-hover:delay-200" />
+</div>
 
-<span className="transition-all duration-300 group-hover:translate-x-[2px]">
+</div>
 
-{pathname === "/supplier/orders" ? "Dashboard":"Orders"}
+<div className="absolute inset-0 rounded-xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 opacity-20 transition-opacity duration-300 group-hover:opacity-40" />
 
-</span>
+</div>
 
 </button>
 
-) : (
+	) : (
 
-<button
-onClick={()=>router.push("/supplier/orders")}
-className="group relative flex items-center gap-2 px-5 py-2 rounded-full border border-gray-300 dark:border-white/20 bg-white/80 dark:bg-white/5 backdrop-blur-md text-gray-700 dark:text-gray-200 hover:text-black dark:hover:text-white transition-all duration-300 hover:bg-gray-200 dark:hover:bg-white/10"
+	<button
+	onClick={()=>handleRoute(primaryNavHref)}
+	className="group relative"
+	>
+
+<div className="relative overflow-hidden rounded-xl bg-gradient-to-bl from-gray-900 via-gray-950 to-black p-[1px] shadow-2xl shadow-emerald-500/20">
+
+<div className="relative flex items-center gap-3 rounded-xl bg-gray-950 px-4 py-2.5 transition-all duration-300 group-hover:bg-gray-950/50">
+
+<div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-600 transition-transform duration-300 group-hover:scale-110">
+
+<svg
+stroke="currentColor"
+viewBox="0 0 24 24"
+fill="none"
+className="h-4 w-4 text-white"
+aria-hidden="true"
 >
+<path
+d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+strokeWidth="2"
+strokeLinejoin="round"
+strokeLinecap="round"
+/>
+</svg>
 
-<span className="transition-all duration-300 group-hover:translate-x-[2px]">
-Orders
-</span>
+<div className="absolute inset-0 rounded-lg bg-emerald-500/50 blur-sm transition-all duration-300 group-hover:blur-md" />
+
+</div>
+
+<div className="flex flex-col items-start text-left leading-tight">
+	<span className="text-sm font-semibold text-white">
+	{primaryNavLabel}
+	</span>
+	<span className="text-[10px] font-medium text-emerald-400/80">
+	{primaryNavDescription}
+	</span>
+	</div>
+
+<div className="ml-auto flex items-center gap-1">
+<div className="h-1.5 w-1.5 rounded-full bg-emerald-500 transition-transform duration-300 group-hover:scale-150" />
+<div className="h-1.5 w-1.5 rounded-full bg-emerald-500/50 transition-transform duration-300 group-hover:scale-150 group-hover:delay-100" />
+<div className="h-1.5 w-1.5 rounded-full bg-emerald-500/30 transition-transform duration-300 group-hover:scale-150 group-hover:delay-200" />
+</div>
+
+</div>
+
+<div className="absolute inset-0 rounded-xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 opacity-20 transition-opacity duration-300 group-hover:opacity-40" />
+
+</div>
 
 </button>
 
 )}
 
-{pathname === "/supplier" && (
-<button
-onClick={()=>router.push("/supplier/faq")}
-className="group relative flex items-center gap-2 px-5 py-2 rounded-full border border-indigo-300/20 bg-gradient-to-r from-indigo-500 to-cyan-500 text-white transition-all duration-300 hover:scale-[1.03]"
->
+	{pathname === "/supplier" && (
+	<button
+	onClick={()=>handleRoute("/")}
+	className="group relative flex min-h-[2.35rem] min-w-[7rem] max-w-full cursor-pointer items-center justify-start rounded-full bg-white/10 py-1.5 shadow-[inset_1px_2px_5px_#00000080] transition-[background-color] duration-[0.8s] ease-[cubic-bezier(0.510,0.026,0.368,1.016)] hover:bg-green-400 sm:min-h-[2.92rem] sm:min-w-[8.5rem] sm:py-2"
+	>
+
+<div className="absolute inset-0 flex items-center justify-start px-1 py-0.5">
+
+<div className="w-[0%] transition-all duration-[1s] ease-[cubic-bezier(0.510,0.026,0.368,1.016)] group-hover:w-full" />
+
+<div className="flex h-full aspect-square items-center justify-center rounded-full bg-green-400 shadow-[inset_1px_-1px_3px_0_black] transition-all duration-[1s] ease-[cubic-bezier(0.510,0.026,0.368,1.016)] group-hover:bg-black">
+
+<div className="size-[0.75rem] text-black transition-transform duration-[1s] ease-[cubic-bezier(0.510,0.026,0.368,1.016)] group-hover:-rotate-45 group-hover:text-white sm:size-[0.8rem]">
+
+<svg viewBox="0 0 16 16" aria-hidden="true">
+<path fill="currentColor" d="M12.175 9H0V7H12.175L6.575 1.4L8 0L16 8L8 16L6.575 14.6L12.175 9Z"/>
+</svg>
+
+</div>
+
+</div>
+
+</div>
+
+<div className="pl-[2.8rem] pr-[0.8rem] text-xs text-black transition-[padding] duration-[1s] ease-[cubic-bezier(0.510,0.026,0.368,1.016)] group-hover:pl-[0.8rem] group-hover:pr-[2.8rem] group-hover:text-black dark:text-white dark:group-hover:text-black sm:pl-[3.4rem] sm:pr-[1.1rem] sm:text-sm sm:group-hover:pl-[1.1rem] sm:group-hover:pr-[3.4rem]">
+User Home
+</div>
+
+</button>
+)}
+
+	{pathname === "/supplier" && (
+	<button
+	onClick={()=>handleRoute("/supplier/faq")}
+	className="group relative flex items-center gap-2 px-5 py-2 rounded-full border border-indigo-300/20 bg-gradient-to-r from-indigo-500 to-cyan-500 text-white transition-all duration-300 hover:scale-[1.03]"
+	>
 
 <span className="transition-all duration-300 group-hover:translate-x-[2px]">
 Guide
@@ -229,31 +505,108 @@ Guide
 </button>
 )}
 
-{!user && (
+	{!user && (
 
-<div className="flex items-center gap-3">
+	<div className="flex items-center gap-3">
 
-<button
-onClick={()=>router.push("/supplier/login")}
-className="px-4 py-2 rounded-full border border-gray-300 dark:border-white/20 bg-white/80 dark:bg-white/5 backdrop-blur-md text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-white/10 transition"
->
+	<button
+	onClick={()=>handleRoute("/supplier/login")}
+	className="px-4 py-2 rounded-full border border-gray-300 dark:border-white/20 bg-white/80 dark:bg-white/5 backdrop-blur-md text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-white/10 transition"
+	>
 Login
 </button>
 
-<button
-onClick={()=>router.push("/supplier/register")}
-className="px-4 py-2 rounded-full bg-gradient-to-r from-indigo-500 to-cyan-500 text-white hover:scale-105 transition"
->
+	<button
+	onClick={()=>handleRoute("/supplier/register")}
+	className="px-4 py-2 rounded-full bg-gradient-to-r from-indigo-500 to-cyan-500 text-white hover:scale-105 transition"
+	>
 Sign Up
 </button>
 
-</div>
+	</div>
 
-)}
+	)}
 
-{/* Theme Toggle */}
+	</div>
 
-<button
+	<div className="relative md:hidden" ref={mobileMenuRef}>
+	<button
+	onClick={()=>setMobileMenuOpen((prev)=>!prev)}
+	className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 bg-white/80 text-gray-700 transition hover:bg-gray-200 dark:border-white/20 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10"
+	aria-label="Open supplier navigation menu"
+	aria-expanded={mobileMenuOpen}
+	>
+	<svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+	<path d="M4 7h16M4 12h16M4 17h16"/>
+	</svg>
+	</button>
+
+	{mobileMenuOpen && (
+	<div className="absolute right-0 z-50 mt-3 w-[18rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-gray-200 bg-white/90 p-3 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#0f1423]/95">
+	<div className="space-y-2">
+	<button
+	onClick={()=>handleRoute(primaryNavHref)}
+	className="flex w-full items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2.5 text-left transition hover:bg-emerald-500/15"
+	>
+	<div className="leading-tight">
+	<p className="text-sm font-semibold text-gray-900 dark:text-white">
+	{primaryNavLabel}
+	</p>
+	<p className="text-[11px] text-emerald-600 dark:text-emerald-300/90">
+	{primaryNavDescription}
+	</p>
+	</div>
+	<span className="text-emerald-600 dark:text-emerald-300">
+	<svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+	<path d="M5 12h14M13 5l7 7-7 7"/>
+	</svg>
+	</span>
+	</button>
+
+	{pathname === "/supplier" && (
+	<button
+	onClick={()=>handleRoute("/")}
+	className="flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white/80 px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10"
+	>
+	<span>User Home</span>
+	<span className="text-xs text-gray-400 dark:text-gray-500">Main site</span>
+	</button>
+	)}
+
+	{pathname === "/supplier" && (
+	<button
+	onClick={()=>handleRoute("/supplier/faq")}
+	className="flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white/80 px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10"
+	>
+	<span>Guide</span>
+	<span className="text-xs text-gray-400 dark:text-gray-500">FAQ</span>
+	</button>
+	)}
+	</div>
+
+	{!user && (
+	<div className="mt-3 grid grid-cols-2 gap-2">
+	<button
+	onClick={()=>handleRoute("/supplier/login")}
+	className="rounded-xl border border-gray-300 bg-white/80 px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-200 dark:border-white/20 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10"
+	>
+	Login
+	</button>
+	<button
+	onClick={()=>handleRoute("/supplier/register")}
+	className="rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 px-3 py-2 text-sm text-white transition hover:opacity-90"
+	>
+	Sign Up
+	</button>
+	</div>
+	)}
+	</div>
+	)}
+	</div>
+
+	{/* Theme Toggle */}
+
+	<button
 onClick={()=>setTheme(theme==="dark"?"light":"dark")}
 className="group relative flex justify-center items-center overflow-visible cursor-pointer"
 >
@@ -302,7 +655,7 @@ viewBox="0 0 100 100"
 
 {/* Profile */}
 
-{user && (
+	{user && (
 
 <div className="relative" ref={dropdownRef}>
 
@@ -312,7 +665,13 @@ className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-500 
 >
 
 {resolvedNavbarPhoto
-? <img src={resolvedNavbarPhoto} className="w-full h-full object-cover"/>
+&& failedAvatarUrl !== resolvedNavbarPhoto
+? <img
+src={resolvedNavbarPhoto}
+alt={supplier?.name || "Supplier"}
+className="w-full h-full object-cover"
+onError={()=>setFailedAvatarUrl(resolvedNavbarPhoto)}
+/>
 : userInitial}
 
 </div>
@@ -380,11 +739,11 @@ Logout
 
 </button>
 
-</div>
+	</div>
 
-)}
+	)}
 
-</div>
+	</div>
 
 )}
 
@@ -429,7 +788,7 @@ Supplier Profile
 
 <div className="flex justify-center mb-8">
 
-{photoPreview ? (
+{photoPreview && failedProfilePhotoUrl !== photoPreview ? (
 
 <img
 src={photoPreview}
@@ -437,6 +796,7 @@ alt={supplier.name || "Supplier"}
 className="w-28 h-28 rounded-full object-cover
 border border-white/40
 shadow-xl"
+onError={()=>setFailedProfilePhotoUrl(photoPreview)}
 />
 
 ) : (
@@ -635,7 +995,7 @@ Edit Profile
 <>
 
 <button
-onClick={()=>{}}
+onClick={saveSupplierProfile}
 disabled={savingProfile}
 className="w-full
 bg-gradient-to-r from-indigo-500 to-cyan-500
@@ -663,10 +1023,12 @@ phone:supplier.phone || ""
 setPhotoFile(null)
 
 setPhotoPreview(
+sanitizeAvatarUrl(
 supplier.displayPhotoURL ||
 supplier.photoURL ||
 supplier.firebasePhotoURL ||
 ""
+)
 )
 
 }}

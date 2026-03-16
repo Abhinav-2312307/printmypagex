@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { connectDB } from "@/lib/mongodb"
 import User from "@/models/User"
 import { authenticateUserRequest } from "@/lib/user-auth"
+import { resolveUserRoleState } from "@/lib/user-roles"
 
 export async function GET(req: Request) {
   const auth = await authenticateUserRequest(req, {
@@ -30,10 +31,13 @@ export async function GET(req: Request) {
   }
 
   const userObj = user.toObject()
+  const normalizedRoles = resolveUserRoleState(userObj)
 
   return NextResponse.json({
     user: {
       ...userObj,
+      role: normalizedRoles.role,
+      roles: normalizedRoles.roles,
       displayPhotoURL: userObj.photoURL || userObj.firebasePhotoURL || ""
     }
   })

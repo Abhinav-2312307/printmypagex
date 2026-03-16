@@ -1,7 +1,7 @@
 "use client"
 
 import RoleGuard from "@/components/RoleGuard"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { auth } from "@/lib/firebase"
 import Navbar from "@/components/Navbar"
 import toast from "react-hot-toast"
@@ -21,12 +21,35 @@ import {
   Tooltip,
   CartesianGrid
 } from "recharts"
+import SupplierSelector, { type SupplierSelectorItem } from "@/components/SupplierSelector"
+
+type DashboardOrder = {
+  createdAt: string
+}
+
+type UserDashboardProfile = {
+  name?: string
+  rollNo?: string
+  branch?: string
+  section?: string
+  year?: string | number
+  phone?: string
+  email?: string
+  photoURL?: string
+  firebasePhotoURL?: string
+  displayPhotoURL?: string
+}
+
+type ChartPoint = {
+  label: string
+  orders: number
+}
 
 export default function UserDashboard() {
 
-  const [orders, setOrders] = useState<any[]>([])
-  const [userData, setUserData] = useState<any>(null)
-  const [suppliers, setSuppliers] = useState<any[]>([])
+  const [orders, setOrders] = useState<DashboardOrder[]>([])
+  const [userData, setUserData] = useState<UserDashboardProfile | null>(null)
+  const [suppliers, setSuppliers] = useState<SupplierSelectorItem[]>([])
   const [loading, setLoading] = useState(true)
 
   const [duration, setDuration] = useState("week")
@@ -128,9 +151,9 @@ export default function UserDashboard() {
     setShowProfile(true)
   }
 
-  function generateChartData(orders:any[], duration:string){
+  function generateChartData(orders: DashboardOrder[], duration: string): ChartPoint[] {
 
-    const grouped:any = {}
+    const grouped: Record<string, number> = {}
 
     orders.forEach(order=>{
 
@@ -157,7 +180,7 @@ export default function UserDashboard() {
 
   const chartData = generateChartData(orders,duration)
 
-  const handleSubmit = async (e:any)=>{
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>)=>{
 
     e.preventDefault()
 
@@ -488,24 +511,21 @@ className="input w-full"
 </p>
 )}
 
-{requestType === "specific" && (
+	{requestType === "specific" && (
 
-<select
-  value={supplier}
-  onChange={(e)=>setSupplier(e.target.value)}
-  className="input w-full"
->
-  <option value="">Select Supplier</option>
+	<div className="space-y-3">
+	<p className="text-sm text-slate-600 dark:text-slate-300">
+	Choose a supplier. Owner accounts appear with a special highlighted profile.
+	</p>
 
-  {suppliers.map((s)=>(
-    <option key={s.firebaseUID} value={s.firebaseUID}>
-      {s.name} | {s.branch} Year {s.year}
-    </option>
-  ))}
+	<SupplierSelector
+	suppliers={suppliers}
+	value={supplier}
+	onChange={setSupplier}
+	/>
+	</div>
 
-</select>
-
-)}
+	)}
 
 <div className="flex items-center gap-3">
 <input

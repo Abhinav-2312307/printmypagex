@@ -1,7 +1,7 @@
-const FALLBACK_OWNER_EMAILS =
-  process.env.NODE_ENV === "production"
-    ? []
-    : ["abhinav1the2great3@gmail.com"]
+const DEFAULT_OWNER_EMAILS = [
+  "abhinavrishi32@gmail.com",
+  "abhinav1the2great3@gmail.com"
+]
 
 function parseEmailList(value: string) {
   return value
@@ -16,7 +16,7 @@ export function getOwnerEmails() {
     process.env.ADMIN_OWNER_EMAILS ||
     ""
 
-  const combined = [...parseEmailList(configured), ...FALLBACK_OWNER_EMAILS]
+  const combined = [...parseEmailList(configured), ...DEFAULT_OWNER_EMAILS]
   return Array.from(new Set(combined))
 }
 

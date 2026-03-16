@@ -9,6 +9,7 @@ import {
   signInWithPopup,
   signOut
 } from "firebase/auth"
+import PortalGuestGuard from "@/components/PortalGuestGuard"
 import { authFetch } from "@/lib/client-auth"
 
 export default function SupplierRegister() {
@@ -135,75 +136,77 @@ export default function SupplierRegister() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="bg-card p-10 rounded-2xl w-full max-w-[420px] text-center">
-        <h1 className="text-3xl font-bold mb-2">Supplier Registration</h1>
-        <p className="text-white/70 mb-6">Register with Email or Google to continue</p>
+    <PortalGuestGuard portal="supplier">
+      <div className="flex min-h-[calc(100svh-10rem)] items-start justify-center pb-6 pt-2 sm:pb-8 sm:pt-4 md:min-h-[calc(100svh-12rem)] md:pt-6">
+        <div className="bg-card w-full max-w-[420px] rounded-2xl p-6 text-center sm:p-10">
+          <h1 className="text-3xl font-bold mb-2">Supplier Registration</h1>
+          <p className="text-white/70 mb-6">Register with Email or Google to continue</p>
 
-        <form onSubmit={handleEmailRegister} className="space-y-4 text-left">
-          <div>
-            <label className="text-sm text-gray-400 mb-1 block">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              className="input w-full"
-              placeholder="you@example.com"
-            />
-          </div>
+          <form onSubmit={handleEmailRegister} className="space-y-4 text-left">
+            <div>
+              <label className="text-sm text-gray-400 mb-1 block">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                className="input w-full"
+                placeholder="you@example.com"
+              />
+            </div>
 
-          <div>
-            <label className="text-sm text-gray-400 mb-1 block">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="new-password"
-              minLength={6}
-              className="input w-full"
-              placeholder="Create password"
-            />
-          </div>
+            <div>
+              <label className="text-sm text-gray-400 mb-1 block">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="new-password"
+                minLength={6}
+                className="input w-full"
+                placeholder="Create password"
+              />
+            </div>
 
-          <div>
-            <label className="text-sm text-gray-400 mb-1 block">Confirm Password</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              autoComplete="new-password"
-              minLength={6}
-              className="input w-full"
-              placeholder="Re-enter password"
-            />
-          </div>
+            <div>
+              <label className="text-sm text-gray-400 mb-1 block">Confirm Password</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                autoComplete="new-password"
+                minLength={6}
+                className="input w-full"
+                placeholder="Re-enter password"
+              />
+            </div>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
-          {successMessage && <p className="text-sm text-green-400">{successMessage}</p>}
+            {error && <p className="text-sm text-red-400">{error}</p>}
+            {successMessage && <p className="text-sm text-green-400">{successMessage}</p>}
+
+            <button
+              type="submit"
+              disabled={loading !== null}
+              className="w-full py-3 bg-primary rounded-xl hover:opacity-90 disabled:opacity-60"
+            >
+              {loading === "email" ? "Creating account..." : "Register with Email"}
+            </button>
+          </form>
+
+          <div className="my-5 text-gray-500">or</div>
 
           <button
-            type="submit"
+            onClick={handleGoogleRegister}
             disabled={loading !== null}
             className="w-full py-3 bg-primary rounded-xl hover:opacity-90 disabled:opacity-60"
           >
-            {loading === "email" ? "Creating account..." : "Register with Email"}
+            {loading === "google" ? "Please wait..." : "Register with Google"}
           </button>
-        </form>
-
-        <div className="my-5 text-gray-500">or</div>
-
-        <button
-          onClick={handleGoogleRegister}
-          disabled={loading !== null}
-          className="w-full py-3 bg-primary rounded-xl hover:opacity-90 disabled:opacity-60"
-        >
-          {loading === "google" ? "Please wait..." : "Register with Google"}
-        </button>
+        </div>
       </div>
-    </div>
+    </PortalGuestGuard>
   )
 }

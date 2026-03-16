@@ -3,53 +3,56 @@
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { auth } from "@/lib/firebase"
-import { onAuthStateChanged } from "firebase/auth"
-import { authFetch } from "@/lib/client-auth"
-import { isOwnerEmail } from "@/lib/owner-access"
+import { onAuthStateChanged, signOut } from "firebase/auth"
+import {
+  resolveUserPortalDestination,
+  USER_ROLE_PROMPT_MESSAGE
+} from "@/lib/portal-access"
 
 export default function UserEntryRedirectPage() {
   const router = useRouter()
 
   useEffect(() => {
+    let active = true
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!active) {
+        return
+      }
+
       if (!user) {
         router.replace("/user/login")
         return
       }
 
-      if (isOwnerEmail(user.email)) {
-        router.replace("/admin")
-        return
-      }
-
       try {
-        const res = await authFetch(`/api/user/details?firebaseUID=${user.uid}`)
-        const data = await res.json().catch(() => ({}))
+        const destination = await resolveUserPortalDestination({
+          uid: user.uid,
+          email: user.email || user.providerData?.[0]?.email || "",
+          photoURL: user.photoURL || "",
+          confirmSupplierPromotion: () => window.confirm(USER_ROLE_PROMPT_MESSAGE)
+        })
 
-        if (!res.ok || !data?.user) {
-          router.replace("/complete-profile")
+        if (!active) {
           return
         }
 
-        const role = String(data.user.role || "USER")
-
-        if (role === "SUPPLIER") {
-          router.replace("/supplier/dashboard")
-          return
-        }
-
-        if (role === "ADMIN") {
-          router.replace("/admin")
-          return
-        }
-
-        router.replace("/user/dashboard")
+        router.replace(destination)
       } catch {
+        await signOut(auth).catch(() => {})
+
+        if (!active) {
+          return
+        }
+
         router.replace("/user/login")
       }
     })
 
-    return () => unsubscribe()
+    return () => {
+      active = false
+      unsubscribe()
+    }
   }, [router])
 
   return (
@@ -58,4 +61,3 @@ export default function UserEntryRedirectPage() {
     </div>
   )
 }
-

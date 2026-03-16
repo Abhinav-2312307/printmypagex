@@ -6,6 +6,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth"
 import { useRouter } from "next/navigation"
 import { isOwnerEmail } from "@/lib/owner-access"
 import { authFetch } from "@/lib/client-auth"
+import { hasUserRole } from "@/lib/user-roles"
 
 export default function RoleGuard({
   children,
@@ -43,7 +44,12 @@ export default function RoleGuard({
           return
         }
 
-        if(data.user.role !== role){
+        if(!hasUserRole(data.user, role)){
+          if (role === "USER" && hasUserRole(data.user, "SUPPLIER")) {
+            router.replace("/user")
+            return
+          }
+
           router.replace("/user/login")
           return
         }

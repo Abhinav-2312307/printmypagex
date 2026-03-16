@@ -3,24 +3,97 @@
 import { useEffect, useState } from "react"
 import { auth } from "@/lib/firebase"
 import Navbar from "@/components/Navbar"
-import AuthGuard from "@/components/AuthGuard"
+import RoleGuard from "@/components/RoleGuard"
 import { pusherClient } from "@/lib/pusher-client"
 import toast from "react-hot-toast"
 import { onAuthStateChanged } from "firebase/auth"
 import ProfileCard from "@/components/ProfileCard"
+import ProfileAvatar from "@/components/ProfileAvatar"
 import { authFetch } from "@/lib/client-auth"
+import OwnerBadge from "@/components/OwnerBadge"
+import { isOwnerEmail } from "@/lib/owner-access"
+
+type SupplierProfile = {
+name?: string
+email?: string
+phone?: string
+rollNo?: string
+branch?: string
+year?: string | number
+photoURL?: string
+firebasePhotoURL?: string
+displayPhotoURL?: string
+isOwner?: boolean
+}
+
+type UserOrder = {
+_id: string
+supplierUID?: string | null
+status: string
+paymentStatus: string
+printType?: string
+pages?: number
+verifiedPages?: number
+estimatedPrice?: number
+finalPrice?: number | null
+fileURL?: string
+duplex?: boolean
+instruction?: string
+alternatePhone?: string
+createdAt: string
+acceptedAt?: string | null
+paidAt?: string | null
+deliveredAt?: string | null
+supplierName?: string | null
+supplierIsOwner?: boolean
+supplierProfile?: SupplierProfile | null
+}
+
+type OrderUpdate = Partial<UserOrder> & {
+_id: string
+}
+
+type RazorpayResponse = {
+razorpay_order_id: string
+razorpay_payment_id: string
+razorpay_signature: string
+}
+
+type RazorpayInstance = {
+open: ()=>void
+}
+
+type RazorpayConstructor = new(options:{
+key: string
+amount: number
+currency: string
+name: string
+description: string
+order_id: string
+handler: (response: RazorpayResponse)=>Promise<void>
+prefill: {
+name: string
+email: string
+}
+theme: {
+color: string
+}
+modal: {
+ondismiss: ()=>void
+}
+})=>RazorpayInstance
 
 declare global {
 interface Window {
-Razorpay: any
+Razorpay?: RazorpayConstructor
 }
 }
 
 export default function UserOrders() {
 
-const [orders,setOrders] = useState<any[]>([])
+const [orders,setOrders] = useState<UserOrder[]>([])
 const [loading,setLoading] = useState(true)
-const [selectedOrder,setSelectedOrder] = useState<any>(null)
+const [selectedOrder,setSelectedOrder] = useState<UserOrder | null>(null)
 const [paying,setPaying] = useState(false)
 const [showSupplierPeek,setShowSupplierPeek] = useState(false)
 const [showSupplierCard,setShowSupplierCard] = useState(false)
@@ -62,7 +135,7 @@ if(!user) return
 
 const channel = pusherClient.subscribe(`private-user-${user.uid}`)
 
-channel.bind("order-updated",(updatedOrder:any)=>{
+	channel.bind("order-updated",(updatedOrder:OrderUpdate)=>{
 
 setOrders(prev =>
 prev.map(order =>
@@ -77,10 +150,10 @@ supplierProfile: updatedOrder.supplierProfile ?? order.supplierProfile
 )
 )
 
-setSelectedOrder((prev:any) =>
-prev && prev._id===updatedOrder._id
-? {
-...prev,
+	setSelectedOrder((prev:UserOrder | null) =>
+	prev && prev._id===updatedOrder._id
+	? {
+	...prev,
 ...updatedOrder,
 supplierName: updatedOrder.supplierName ?? prev.supplierName,
 supplierProfile: updatedOrder.supplierProfile ?? prev.supplierProfile
@@ -161,7 +234,7 @@ setSelectedOrder(null)
 }
 
 const loadRazorpayScript = async()=>{
-if(window.Razorpay) return true
+	if(window.Razorpay) return true
 
 return new Promise<boolean>((resolve)=>{
 const script = document.createElement("script")
@@ -172,7 +245,7 @@ document.body.appendChild(script)
 })
 }
 
-const payNow = async(order:any)=>{
+const payNow = async(order:UserOrder)=>{
 
 const user = auth.currentUser
 if(!user){
@@ -211,14 +284,22 @@ setPaying(false)
 return
 }
 
-const razorpay = new window.Razorpay({
+const Razorpay = window.Razorpay
+
+if(!Razorpay){
+toast.error("Payment gateway unavailable")
+setPaying(false)
+return
+}
+
+const razorpay = new Razorpay({
 key:createData.key,
 amount:createData.amount,
 currency:createData.currency,
 name:"PrintMyPage",
 description:`Payment for Order ${order._id}`,
 order_id:createData.razorpayOrderId,
-handler: async(response:any)=>{
+handler: async(response:RazorpayResponse)=>{
 
 const verifyRes = await authFetch("/api/payment/verify",{
 method:"POST",
@@ -242,17 +323,17 @@ setPaying(false)
 return
 }
 
-toast.success("Payment successful")
+	toast.success("Payment successful")
 
-setOrders(prev =>
-prev.map((o:any)=>
-o._id===order._id ? verifyData.order : o
-)
-)
+	setOrders(prev =>
+	prev.map((o)=>
+	o._id===order._id ? verifyData.order : o
+	)
+	)
 
-setSelectedOrder((prev:any)=>
-prev && prev._id===order._id ? verifyData.order : prev
-)
+	setSelectedOrder((prev:UserOrder | null)=>
+	prev && prev._id===order._id ? verifyData.order : prev
+	)
 
 setPaying(false)
 
@@ -315,12 +396,18 @@ toast.error("Failed to download receipt")
 
 
 const totalOrders = orders.length
+const selectedSupplierProfile = selectedOrder?.supplierProfile
+const selectedSupplierIsOwner = Boolean(
+selectedOrder?.supplierIsOwner ||
+selectedSupplierProfile?.isOwner ||
+isOwnerEmail(selectedSupplierProfile?.email)
+)
 
 
 
 return(
 
-<AuthGuard>
+    <RoleGuard role="USER">
 
 <div className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-sky-100 text-gray-900 dark:from-black dark:via-[#0f0f1a] dark:to-[#12122a] dark:text-white">
 
@@ -490,40 +577,81 @@ Order Details
 
 <p>Payment: {selectedOrder.paymentStatus}</p>
 
-<div className="relative">
-<p>
-Supplier:
-{selectedOrder.supplierName ? (
-<>
-{" "}
-<button
-onMouseEnter={()=>setShowSupplierPeek(true)}
-onMouseLeave={()=>setShowSupplierPeek(false)}
-onClick={()=>setShowSupplierCard(true)}
-className="text-indigo-400 underline underline-offset-2 hover:text-indigo-300"
->
-{selectedOrder.supplierName}
-</button>
-</>
-) : (
-" Not assigned"
-)}
+	<div className="relative">
+	<p>
+	Supplier:
+	{selectedOrder.supplierName ? (
+	<>
+	{" "}
+	<button
+	onMouseEnter={()=>setShowSupplierPeek(true)}
+	onMouseLeave={()=>setShowSupplierPeek(false)}
+	onClick={()=>setShowSupplierCard(true)}
+	className={`underline underline-offset-2 ${
+	selectedSupplierIsOwner
+	? "font-medium text-amber-300 hover:text-amber-200"
+	: "text-indigo-400 hover:text-indigo-300"
+	}`}
+	>
+	{selectedOrder.supplierName}
+	</button>
+	{selectedSupplierIsOwner && (
+	<span className="ml-2 inline-flex align-middle">
+	<OwnerBadge email={selectedSupplierProfile?.email} isOwner={selectedSupplierIsOwner} className="text-[9px]" label="Platform Owner"/>
+	</span>
+	)}
+	</>
+	) : (
+	" Not assigned"
+	)}
 </p>
 
-{showSupplierPeek && selectedOrder.supplierProfile && !showSupplierCard && (
-<div
-onMouseEnter={()=>setShowSupplierPeek(true)}
-onMouseLeave={()=>setShowSupplierPeek(false)}
-className="absolute left-0 top-7 z-20 w-72 rounded-2xl border border-white/10 bg-[#101421] p-4 shadow-2xl"
->
-<p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Supplier Preview</p>
-<p className="font-semibold">{selectedOrder.supplierProfile.name || selectedOrder.supplierName}</p>
-<p className="text-sm text-gray-300">{selectedOrder.supplierProfile.email || "No email"}</p>
-<p className="text-sm text-gray-300">{selectedOrder.supplierProfile.phone || "No phone"}</p>
-<p className="text-xs text-indigo-300 mt-2">Click name to open full profile</p>
-</div>
-)}
-</div>
+	{showSupplierPeek && selectedOrder.supplierProfile && !showSupplierCard && (
+	<div
+	onMouseEnter={()=>setShowSupplierPeek(true)}
+	onMouseLeave={()=>setShowSupplierPeek(false)}
+	className={`absolute left-0 top-7 z-20 w-80 rounded-2xl border p-4 shadow-2xl ${
+	selectedSupplierIsOwner
+	? "border-amber-300/30 bg-[radial-gradient(circle_at_top_right,rgba(255,226,148,0.1),transparent_30%),linear-gradient(135deg,rgba(20,18,12,0.96),rgba(13,11,8,0.98))]"
+	: "border-white/10 bg-[#101421]"
+	}`}
+	>
+	<div className="flex items-start gap-3">
+	<ProfileAvatar
+	name={selectedSupplierProfile.name || selectedOrder.supplierName || "Supplier"}
+	photoURL={selectedSupplierProfile.displayPhotoURL || selectedSupplierProfile.photoURL || selectedSupplierProfile.firebasePhotoURL}
+	alt={selectedSupplierProfile.name || selectedOrder.supplierName || "Supplier"}
+	isOwner={selectedSupplierIsOwner}
+	className="h-14 w-14 shrink-0 rounded-2xl"
+	initialsClassName="text-lg"
+	/>
+
+	<div className="min-w-0 flex-1">
+	<p className={`mb-2 text-xs uppercase tracking-[0.25em] ${
+	selectedSupplierIsOwner ? "text-amber-200/70" : "text-gray-400"
+	}`}>
+	Supplier Preview
+	</p>
+	<div className="flex flex-wrap items-center gap-2">
+	<p className={`${selectedSupplierIsOwner ? "text-lg font-semibold text-amber-100" : "font-semibold text-white"}`}>
+	{selectedSupplierProfile.name || selectedOrder.supplierName}
+	</p>
+	<OwnerBadge email={selectedSupplierProfile.email} isOwner={selectedSupplierIsOwner} className="text-[9px]" label="Platform Owner"/>
+	</div>
+	<p className={`text-sm ${selectedSupplierIsOwner ? "text-amber-50/88" : "text-gray-300"}`}>
+	{selectedSupplierProfile.email || "No email"}
+	</p>
+	<p className={`text-sm ${selectedSupplierIsOwner ? "text-amber-100/78" : "text-gray-300"}`}>
+	{selectedSupplierProfile.phone || "No phone"}
+	</p>
+	<p className={`mt-2 text-xs ${selectedSupplierIsOwner ? "text-amber-200/76" : "text-indigo-300"}`}>
+	Click the name to open the full profile card.
+	</p>
+	</div>
+	</div>
+	</div>
+	)}
+	</div>
 
 <p>
 Created: {new Date(selectedOrder.createdAt).toLocaleString()}
@@ -729,7 +857,7 @@ Close Supplier Card
 
 </div>
 
-</AuthGuard>
+    </RoleGuard>
 
 )
 

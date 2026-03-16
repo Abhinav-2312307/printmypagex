@@ -11,6 +11,7 @@ import {
   signOut
 } from "firebase/auth"
 import { isOwnerEmail } from "@/lib/owner-access"
+import PortalGuestGuard from "@/components/PortalGuestGuard"
 import { authFetch } from "@/lib/client-auth"
 
 export default function SupplierLogin() {
@@ -133,7 +134,7 @@ export default function SupplierLogin() {
       setLoading(null)
     }
   }
-
+ 
   const handleForgotPassword = async () => {
     setError("")
     setInfoMessage("")
@@ -198,79 +199,81 @@ export default function SupplierLogin() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="bg-card p-10 rounded-2xl w-full max-w-[420px] text-center">
-        <h1 className="text-3xl font-bold mb-2">Supplier Login</h1>
-        <p className="text-white/70 mb-6">Login to access supplier dashboard</p>
+    <PortalGuestGuard portal="supplier">
+      <div className="flex min-h-[calc(100svh-10rem)] items-start justify-center pb-6 pt-2 sm:pb-8 sm:pt-4 md:min-h-[calc(100svh-12rem)] md:pt-6">
+        <div className="bg-card w-full max-w-[420px] rounded-2xl p-6 text-center sm:p-10">
+          <h1 className="text-3xl font-bold mb-2">Supplier Login</h1>
+          <p className="text-white/70 mb-6">Login to access supplier dashboard</p>
 
-        <form onSubmit={handleEmailLogin} className="space-y-4 text-left">
-          <div>
-            <label className="text-sm text-gray-400 mb-1 block">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              className="input w-full"
-              placeholder="you@example.com"
-            />
-          </div>
+          <form onSubmit={handleEmailLogin} className="space-y-4 text-left">
+            <div>
+              <label className="text-sm text-gray-400 mb-1 block">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                className="input w-full"
+                placeholder="you@example.com"
+              />
+            </div>
 
-          <div>
-            <label className="text-sm text-gray-400 mb-1 block">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-              minLength={6}
-              className="input w-full"
-              placeholder="Enter your password"
-            />
-          </div>
+            <div>
+              <label className="text-sm text-gray-400 mb-1 block">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                minLength={6}
+                className="input w-full"
+                placeholder="Enter your password"
+              />
+            </div>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
-          {infoMessage && <p className="text-sm text-green-400">{infoMessage}</p>}
+            {error && <p className="text-sm text-red-400">{error}</p>}
+            {infoMessage && <p className="text-sm text-green-400">{infoMessage}</p>}
+
+            <button
+              type="submit"
+              disabled={loading !== null}
+              className="w-full py-3 bg-primary rounded-xl hover:opacity-90 disabled:opacity-60"
+            >
+              {loading === "email" ? "Signing in..." : "Login with Email"}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              disabled={loading !== null}
+              className="w-full py-2 text-sm text-gray-300 hover:text-white disabled:opacity-60"
+            >
+              Forgot Password?
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResendVerification}
+              disabled={loading !== null}
+              className="w-full py-2 text-sm text-gray-300 hover:text-white disabled:opacity-60"
+            >
+              Resend Verification Email
+            </button>
+          </form>
+
+          <div className="my-5 text-gray-500">or</div>
 
           <button
-            type="submit"
+            onClick={handleGoogleLogin}
             disabled={loading !== null}
             className="w-full py-3 bg-primary rounded-xl hover:opacity-90 disabled:opacity-60"
           >
-            {loading === "email" ? "Signing in..." : "Login with Email"}
+            {loading === "google" ? "Please wait..." : "Login with Google"}
           </button>
-
-          <button
-            type="button"
-            onClick={handleForgotPassword}
-            disabled={loading !== null}
-            className="w-full py-2 text-sm text-gray-300 hover:text-white disabled:opacity-60"
-          >
-            Forgot Password?
-          </button>
-
-          <button
-            type="button"
-            onClick={handleResendVerification}
-            disabled={loading !== null}
-            className="w-full py-2 text-sm text-gray-300 hover:text-white disabled:opacity-60"
-          >
-            Resend Verification Email
-          </button>
-        </form>
-
-        <div className="my-5 text-gray-500">or</div>
-
-        <button
-          onClick={handleGoogleLogin}
-          disabled={loading !== null}
-          className="w-full py-3 bg-primary rounded-xl hover:opacity-90 disabled:opacity-60"
-        >
-          {loading === "google" ? "Please wait..." : "Login with Google"}
-        </button>
+        </div>
       </div>
-    </div>
+    </PortalGuestGuard>
   )
 }

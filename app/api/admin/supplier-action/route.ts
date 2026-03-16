@@ -3,6 +3,7 @@ import { authenticateAdminRequest } from "@/lib/admin-auth"
 import Supplier from "@/models/Supplier"
 import User from "@/models/User"
 import Order from "@/models/Order"
+import { removeUserRoles } from "@/lib/user-roles"
 
 export async function POST(req: Request) {
   const auth = await authenticateAdminRequest(req)
@@ -56,12 +57,26 @@ export async function POST(req: Request) {
   }
 
   if (action === "delete") {
+    const existingUser = await User.findOne({ firebaseUID }).lean()
+    const userRoleState = existingUser
+      ? removeUserRoles(existingUser, ["SUPPLIER"], {
+          fallbackRole: "USER"
+        })
+      : null
+
     await Promise.all([
       Supplier.deleteOne({ firebaseUID }),
-      User.updateOne(
-        { firebaseUID },
-        { role: "USER" }
-      ),
+      userRoleState
+        ? User.updateOne(
+            { firebaseUID },
+            {
+              $set: {
+                role: userRoleState.role,
+                roles: userRoleState.roles
+              }
+            }
+          )
+        : Promise.resolve(),
       Order.updateMany(
         { supplierUID: firebaseUID },
         {

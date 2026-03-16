@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { authenticateAdminRequest } from "@/lib/admin-auth"
 import User from "@/models/User"
 import Order from "@/models/Order"
+import { mergeUserRoles } from "@/lib/user-roles"
 
 export async function POST(req: Request) {
   const auth = await authenticateAdminRequest(req)
@@ -35,18 +36,29 @@ export async function POST(req: Request) {
       )
     }
 
-    const user = await User.findOneAndUpdate(
-      { firebaseUID },
-      { role },
-      { new: true }
-    )
-
-    if (!user) {
+    const existingUser = await User.findOne({ firebaseUID }).lean()
+    if (!existingUser) {
       return NextResponse.json(
         { success: false, message: "User not found" },
         { status: 404 }
       )
     }
+
+    const roleState = mergeUserRoles(existingUser, [role], {
+      preferredRole: role,
+      preserveAdmin: false
+    })
+
+    const user = await User.findOneAndUpdate(
+      { firebaseUID },
+      {
+        $set: {
+          role: roleState.role,
+          roles: roleState.roles
+        }
+      },
+      { new: true }
+    )
 
     return NextResponse.json({ success: true, user })
   }

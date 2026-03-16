@@ -42,6 +42,7 @@ export async function POST(req: Request) {
         email,
         name: decoded.name || "Admin",
         role: "ADMIN",
+        roles: ["ADMIN"],
         approved: true,
         active: true
       },

@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, type FormEvent } from "react"
 import { auth } from "@/lib/firebase"
 import Navbar from "@/components/Navbar"
-import AuthGuard from "@/components/AuthGuard"
+import RoleGuard from "@/components/RoleGuard"
 import toast from "react-hot-toast"
 import { authFetch } from "@/lib/client-auth"
 import {
@@ -11,6 +11,7 @@ import {
   requiresManualPageCount,
   UPLOAD_ACCEPT_ATTRIBUTE
 } from "@/lib/upload-file"
+import SupplierSelector, { type SupplierSelectorItem } from "@/components/SupplierSelector"
 
 export default function CreateOrderPage() {
 
@@ -21,28 +22,46 @@ export default function CreateOrderPage() {
   const [pageCount, setPageCount] = useState("")
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const [suppliers, setSuppliers] = useState<any[]>([])
+  const [suppliers, setSuppliers] = useState<SupplierSelectorItem[]>([])
   const [loadingSuppliers, setLoadingSuppliers] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
+    let active = true
 
-    if (requestType === "specific") {
-
-      setLoadingSuppliers(true)
-
+    if (requestType === "specific" && suppliers.length === 0) {
       authFetch("/api/supplier/list")
         .then(res => res.json())
         .then(data => {
+          if (!active) return
           setSuppliers(data.suppliers || [])
           setLoadingSuppliers(false)
         })
-        .catch(() => setLoadingSuppliers(false))
+        .catch(() => {
+          if (!active) return
+          setLoadingSuppliers(false)
+        })
     }
 
-  }, [requestType])
+    return () => {
+      active = false
+    }
+  }, [requestType, suppliers.length])
 
-  const handleSubmit = async (e: any) => {
+  const handleRequestTypeChange = (nextValue: string) => {
+    setRequestType(nextValue)
+
+    if (nextValue === "specific" && suppliers.length === 0) {
+      setLoadingSuppliers(true)
+      return
+    }
+
+    if (nextValue !== "specific") {
+      setLoadingSuppliers(false)
+    }
+  }
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
 
     e.preventDefault()
 
@@ -72,6 +91,11 @@ export default function CreateOrderPage() {
     const user = auth.currentUser
 
     if (!user) return
+
+    if (requestType === "specific" && !supplier) {
+      toast.error("Select a supplier first.")
+      return
+    }
 
     setSubmitting(true)
 
@@ -113,7 +137,7 @@ export default function CreateOrderPage() {
   }
 
   return (
-    <AuthGuard>
+    <RoleGuard role="USER">
 
       <Navbar />
 
@@ -192,7 +216,7 @@ export default function CreateOrderPage() {
               </label>
               <select
                 value={requestType}
-                onChange={(e) => setRequestType(e.target.value)}
+                onChange={(e) => handleRequestTypeChange(e.target.value)}
                 className="w-full bg-dark p-3 rounded-lg border border-gray-700"
               >
                 <option value="global">Global Request</option>
@@ -209,25 +233,16 @@ export default function CreateOrderPage() {
                 {loadingSuppliers ? (
                   <p className="text-gray-400">Loading suppliers...</p>
                 ) : (
-                  <select
-                    value={supplier}
-                    onChange={(e) => setSupplier(e.target.value)}
-                    required
-                    className="w-full bg-dark p-3 rounded-lg border border-gray-700"
-                  >
-                    <option value="">
-                      Select Supplier
-                    </option>
-
-                    {suppliers.map((s) => (
-                      <option
-                        key={s.firebaseUID}
-                        value={s.firebaseUID}
-                      >
-                        {s.name} | {s.branch} Year {s.year}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="space-y-3">
+                    <p className="text-xs text-gray-400">
+                      Owner accounts are highlighted with a premium legendary style.
+                    </p>
+                    <SupplierSelector
+                      suppliers={suppliers}
+                      value={supplier}
+                      onChange={setSupplier}
+                    />
+                  </div>
                 )}
               </div>
             )}
@@ -246,6 +261,6 @@ export default function CreateOrderPage() {
 
       </div>
 
-    </AuthGuard>
+    </RoleGuard>
   )
 }

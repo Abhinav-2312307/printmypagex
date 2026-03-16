@@ -2,8 +2,10 @@ import { NextResponse } from "next/server"
 import { connectDB } from "@/lib/mongodb"
 import Order from "@/models/Order"
 import Supplier from "@/models/Supplier"
+import User from "@/models/User"
 import { authenticateUserRequest } from "@/lib/user-auth"
 import { applyOrderLifecycleRules } from "@/lib/order-lifecycle"
+import { isOwnerEmail } from "@/lib/owner-access"
 
 type MinimalSupplier = {
   firebaseUID: string
@@ -89,31 +91,50 @@ export async function GET(req: Request) {
       .select("firebaseUID name email phone rollNo branch year photoURL firebasePhotoURL")
       .lean()) as MinimalSupplier[]
 
+    const users = await User.find({
+      firebaseUID: { $in: supplierUIDs }
+    })
+      .select("firebaseUID name email phone rollNo branch year photoURL firebasePhotoURL")
+      .lean()
+
     const supplierMap = new Map<string, MinimalSupplier>()
     suppliers.forEach((supplier) => {
       supplierMap.set(String(supplier.firebaseUID), supplier)
     })
 
+    const userMap = new Map(users.map((user) => [String(user.firebaseUID || ""), user]))
+
     const enrichedOrders = orders.map((order) => {
-      const supplier = supplierMap.get(String(order.supplierUID || ""))
+      const supplierUID = String(order.supplierUID || "")
+      const supplier = supplierMap.get(supplierUID)
+      const linkedUser = userMap.get(supplierUID)
+      const supplierEmail = String(linkedUser?.email || supplier?.email || "")
+      const supplierIsOwner = isOwnerEmail(supplierEmail)
 
       const supplierProfile = supplier
         ? {
-            name: supplier.name || "",
-            email: supplier.email || "",
-            phone: supplier.phone || "",
-            rollNo: supplier.rollNo || "",
-            branch: supplier.branch || "",
-            year: supplier.year || "",
-            photoURL: supplier.photoURL || "",
-            firebasePhotoURL: supplier.firebasePhotoURL || "",
-            displayPhotoURL: supplier.photoURL || supplier.firebasePhotoURL || ""
+            name: supplier.name || linkedUser?.name || "",
+            email: supplierEmail,
+            phone: supplier.phone || linkedUser?.phone || "",
+            rollNo: supplier.rollNo || linkedUser?.rollNo || "",
+            branch: supplier.branch || linkedUser?.branch || "",
+            year: supplier.year || linkedUser?.year || "",
+            photoURL: supplier.photoURL || linkedUser?.photoURL || "",
+            firebasePhotoURL: supplier.firebasePhotoURL || linkedUser?.firebasePhotoURL || "",
+            displayPhotoURL:
+              supplier.photoURL ||
+              linkedUser?.photoURL ||
+              supplier.firebasePhotoURL ||
+              linkedUser?.firebasePhotoURL ||
+              "",
+            isOwner: supplierIsOwner
           }
         : null
 
       return {
         ...order,
-        supplierName: supplier?.name || null,
+        supplierName: supplier?.name || linkedUser?.name || null,
+        supplierIsOwner,
         supplierProfile
       }
     })

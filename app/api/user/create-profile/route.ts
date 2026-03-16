@@ -8,6 +8,7 @@ import {
   normalizeText
 } from "@/lib/form-validation"
 import { authenticateUserRequest } from "@/lib/user-auth"
+import { mergeUserRoles } from "@/lib/user-roles"
 
 export async function POST(req: Request) {
 
@@ -91,19 +92,27 @@ export async function POST(req: Request) {
       )
     }
 
+    const existingUser = await User.findOne({ firebaseUID: body.firebaseUID }).lean()
+    const roleState = mergeUserRoles(existingUser, ["USER"])
+
     const user = await User.findOneAndUpdate(
       { firebaseUID: body.firebaseUID },
       {
-        firebaseUID: body.firebaseUID,
-        email: body.email || undefined,
-        firebasePhotoURL: body.photoURL || undefined,
-        name,
-        rollNo,
-        branch,
-        year,
-        section,
-        phone,
-        approved: true
+        $set: {
+          firebaseUID: body.firebaseUID,
+          email: body.email || existingUser?.email || undefined,
+          firebasePhotoURL: body.photoURL || existingUser?.firebasePhotoURL || undefined,
+          name,
+          rollNo,
+          branch,
+          year,
+          section,
+          phone,
+          role: roleState.role,
+          roles: roleState.roles,
+          approved: existingUser?.approved ?? true,
+          active: existingUser?.active ?? true
+        }
       },
       {
         upsert: true,

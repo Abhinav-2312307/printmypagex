@@ -40,6 +40,16 @@ type NavbarProfileData = {
   displayPhotoURL?: string
 }
 
+function sanitizeAvatarUrl(value: unknown) {
+  const url = String(value || "").trim()
+
+  if (!url || url === "null" || url === "undefined") {
+    return ""
+  }
+
+  return url
+}
+
 const defaultNavButtons: NavbarButton[] = [
   {
     label: "Pricing",
@@ -70,6 +80,7 @@ export default function Navbar({
   const [user, setUser] = useState<User | null>(null)
   const [profileData, setProfileData] = useState<NavbarProfileData | null>(null)
   const [showProfile, setShowProfile] = useState(false)
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState("")
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
@@ -133,11 +144,13 @@ export default function Navbar({
         photoURL: profileData?.photoURL || "",
         firebasePhotoURL: profileData?.firebasePhotoURL || "",
         displayPhotoURL:
-          profileData?.displayPhotoURL ||
-          profileData?.photoURL ||
-          profileData?.firebasePhotoURL ||
-          user.photoURL ||
-          ""
+          sanitizeAvatarUrl(
+            profileData?.displayPhotoURL ||
+              profileData?.photoURL ||
+              profileData?.firebasePhotoURL ||
+              user.photoURL ||
+              ""
+          )
       }
     : null
 
@@ -148,7 +161,7 @@ export default function Navbar({
     user?.email?.charAt(0)?.toUpperCase() ||
     "U"
 
-  const avatarPhotoURL = String(
+  const avatarPhotoURL = sanitizeAvatarUrl(
     resolvedProfile?.displayPhotoURL ||
       resolvedProfile?.photoURL ||
       resolvedProfile?.firebasePhotoURL ||
@@ -467,12 +480,13 @@ export default function Navbar({
                   className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-indigo-500 to-cyan-500 text-sm font-bold text-black shadow-lg transition hover:scale-105"
                   aria-label="Open profile menu"
                 >
-                  {avatarPhotoURL ? (
+                  {avatarPhotoURL && failedAvatarUrl !== avatarPhotoURL ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={avatarPhotoURL}
                       alt={resolvedProfile?.name || "User"}
                       className="h-full w-full object-cover"
+                      onError={() => setFailedAvatarUrl(avatarPhotoURL)}
                     />
                   ) : (
                     userInitial
