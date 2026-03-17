@@ -1,5 +1,3 @@
-"use client"
-
 import Navbar from "@/components/Navbar"
 
 export default function PricingPage() {
@@ -88,14 +86,6 @@ className="relative group backdrop-blur-xl bg-white/10 dark:bg-white/5 border bo
 ))}
 
 </ul>
-
-{/* Button from Uiverse */}
-
-<div className="relative group w-fit">
-
-
-
-</div>
 
 </div>
 

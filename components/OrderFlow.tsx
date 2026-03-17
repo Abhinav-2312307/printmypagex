@@ -20,9 +20,13 @@ const container=useRef<HTMLDivElement>(null)
 
 useEffect(()=>{
 
-const cards = gsap.utils.toArray(".flow-card")
+if (!container.current) return
 
-cards.forEach((card:any,i)=>{
+const cards = Array.from(
+container.current.querySelectorAll<HTMLElement>(".flow-card")
+)
+
+cards.forEach((card)=>{
 
 gsap.from(card,{
 opacity:0,
@@ -36,6 +40,14 @@ start:"top 85%"
 })
 
 })
+
+return () => {
+ScrollTrigger.getAll().forEach((trigger) => {
+if (cards.includes(trigger.trigger as HTMLElement)) {
+trigger.kill()
+}
+})
+}
 
 },[])
 

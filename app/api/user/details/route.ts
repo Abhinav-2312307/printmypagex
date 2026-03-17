@@ -4,6 +4,14 @@ import User from "@/models/User"
 import { authenticateUserRequest } from "@/lib/user-auth"
 import { resolveUserRoleState } from "@/lib/user-roles"
 
+type UserDetailsRecord = {
+  [key: string]: unknown
+  photoURL?: string
+  firebasePhotoURL?: string
+  role?: string | null
+  roles?: Array<string | null | undefined> | null
+}
+
 export async function GET(req: Request) {
   const auth = await authenticateUserRequest(req, {
     requireProfile: false,
@@ -24,21 +32,20 @@ export async function GET(req: Request) {
 
   await connectDB()
 
-  const user = await User.findOne({ firebaseUID })
+  const user = await User.findOne({ firebaseUID }).lean<UserDetailsRecord | null>()
 
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 })
   }
 
-  const userObj = user.toObject()
-  const normalizedRoles = resolveUserRoleState(userObj)
+  const normalizedRoles = resolveUserRoleState(user)
 
   return NextResponse.json({
     user: {
-      ...userObj,
+      ...user,
       role: normalizedRoles.role,
       roles: normalizedRoles.roles,
-      displayPhotoURL: userObj.photoURL || userObj.firebasePhotoURL || ""
+      displayPhotoURL: user.photoURL || user.firebasePhotoURL || ""
     }
   })
 }

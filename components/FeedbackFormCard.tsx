@@ -109,6 +109,7 @@ export default function FeedbackFormCard() {
   const [ratings, setRatings] = useState<FeedbackRatings>(createEmptyRatings)
   const [hovered, setHovered] = useState<Partial<Record<FeedbackAspectKey, number>>>({})
   const [message, setMessage] = useState("")
+  const [website, setWebsite] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [status, setStatus] = useState<SubmitStatus>(null)
   const [submitted, setSubmitted] = useState(false)
@@ -152,7 +153,8 @@ export default function FeedbackFormCard() {
         },
         body: JSON.stringify({
           ...ratings,
-          message: message.trim()
+          message: message.trim(),
+          website: website.trim()
         })
       })
 
@@ -171,6 +173,7 @@ export default function FeedbackFormCard() {
       setRatings(createEmptyRatings())
       setHovered({})
       setMessage("")
+      setWebsite("")
     } catch (error) {
       setStatus({
         type: "error",
@@ -327,6 +330,21 @@ export default function FeedbackFormCard() {
           <span>Minimum 10 characters</span>
           <span>{message.trim().length}/1500</span>
         </div>
+      </div>
+
+      <div
+        className="absolute left-[-9999px] top-auto h-px w-px overflow-hidden"
+        aria-hidden="true"
+      >
+        <label htmlFor="feedback-website">Website</label>
+        <input
+          id="feedback-website"
+          type="text"
+          tabIndex={-1}
+          autoComplete="off"
+          value={website}
+          onChange={(event) => setWebsite(event.target.value)}
+        />
       </div>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

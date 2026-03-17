@@ -5,6 +5,33 @@ import User from "@/models/User"
 import { isOwnerEmail } from "@/lib/owner-access"
 import { authenticateUserRequest } from "@/lib/user-auth"
 
+type SupplierRecord = {
+  _id?: string
+  firebaseUID: string
+  name?: string
+  email?: string
+  phone?: string
+  rollNo?: string
+  branch?: string
+  year?: string | number
+  photoURL?: string
+  firebasePhotoURL?: string
+  approved?: boolean
+  active?: boolean
+  createdAt?: Date
+}
+
+type OwnerUserRecord = {
+  email?: string
+  name?: string
+  phone?: string
+  rollNo?: string
+  branch?: string
+  year?: string | number
+  photoURL?: string
+  firebasePhotoURL?: string
+}
+
 export async function GET(req:Request){
 const auth = await authenticateUserRequest(req, {
 requireProfile: false,
@@ -35,9 +62,13 @@ message:"Unauthorized UID"
 const supplier = await Supplier.findOne({
 firebaseUID
 })
+  .select("firebaseUID name email phone rollNo branch year photoURL firebasePhotoURL approved active createdAt")
+  .lean<SupplierRecord | null>()
 
 if (!supplier && firebaseUID) {
-const user = await User.findOne({ firebaseUID }).select("email name phone rollNo branch year photoURL firebasePhotoURL")
+const user = await User.findOne({ firebaseUID })
+  .select("email name phone rollNo branch year photoURL firebasePhotoURL")
+  .lean<OwnerUserRecord | null>()
 
 if (user && isOwnerEmail(user.email)) {
 return NextResponse.json({
@@ -60,14 +91,12 @@ active: true
 }
 }
 
-const supplierObj = supplier?.toObject()
-
 return NextResponse.json({
 success:true,
-supplier: supplierObj
+supplier: supplier
 ? {
-...supplierObj,
-displayPhotoURL: supplierObj.photoURL || supplierObj.firebasePhotoURL || ""
+...supplier,
+displayPhotoURL: supplier.photoURL || supplier.firebasePhotoURL || ""
 }
 : null
 })

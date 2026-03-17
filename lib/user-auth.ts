@@ -23,6 +23,11 @@ type UserAuthFailure = {
 
 type UserAuthResult = UserAuthSuccess | UserAuthFailure
 
+type UserAccessRecord = {
+  active?: boolean
+  approved?: boolean
+}
+
 function extractBearerToken(req: Request) {
   const authHeader = req.headers.get("authorization") || ""
   if (!authHeader.startsWith("Bearer ")) {
@@ -66,7 +71,9 @@ export async function authenticateUserRequest(
     }
 
     await connectDB()
-    const user = await User.findOne({ firebaseUID: decoded.uid }).select("active approved")
+    const user = await User.findOne({ firebaseUID: decoded.uid })
+      .select("active approved")
+      .lean<UserAccessRecord | null>()
 
     if (!user) {
       if (requireProfile && !isOwner) {

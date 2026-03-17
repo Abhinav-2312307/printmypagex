@@ -16,6 +16,11 @@ type SupplierAuthFailure = {
 
 type SupplierAuthResult = SupplierAuthSuccess | SupplierAuthFailure
 
+type SupplierAccessRecord = {
+  approved?: boolean
+  active?: boolean
+}
+
 function extractBearerToken(req: Request) {
   const authHeader = req.headers.get("authorization") || ""
   if (!authHeader.startsWith("Bearer ")) {
@@ -42,6 +47,8 @@ export async function authenticateSupplierRequest(req: Request): Promise<Supplie
 
     await connectDB()
     const supplier = await Supplier.findOne({ firebaseUID: decoded.uid })
+      .select("approved active")
+      .lean<SupplierAccessRecord | null>()
 
     if (!supplier) {
       return {

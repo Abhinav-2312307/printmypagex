@@ -1,4 +1,11 @@
 declare module "pdf-parse/lib/pdf-parse.js" {
-  const pdf: any
-  export default pdf
+  type PdfParseResult = {
+    numpages: number
+    text: string
+    info?: unknown
+    metadata?: unknown
+    version?: string
+  }
+
+  export default function pdf(dataBuffer: Uint8Array): Promise<PdfParseResult>
 }

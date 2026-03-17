@@ -5,8 +5,39 @@ import {
   parseFeedbackRatings
 } from "@/lib/feedback"
 import Feedback from "@/models/Feedback"
+import {
+  buildSubmissionFingerprint,
+  createSubmissionLimitResponse,
+  enforceSubmissionGuards,
+  getRequestDeviceKey
+} from "@/lib/submission-protection"
 
 export const runtime = "nodejs"
+
+const PUBLIC_DEVICE_RULES = [
+  {
+    name: "public-hourly",
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 5,
+    blockDurationMs: 60 * 60 * 1000
+  }
+]
+
+const FEEDBACK_DEVICE_RULES = [
+  {
+    name: "feedback-halfday",
+    windowMs: 12 * 60 * 60 * 1000,
+    maxRequests: 2,
+    blockDurationMs: 12 * 60 * 60 * 1000,
+    duplicateCooldownMs: 10 * 60 * 1000
+  },
+  {
+    name: "feedback-weekly",
+    windowMs: 7 * 24 * 60 * 60 * 1000,
+    maxRequests: 5,
+    blockDurationMs: 7 * 24 * 60 * 60 * 1000
+  }
+]
 
 function sanitizeText(value: unknown) {
   if (typeof value !== "string") return ""
@@ -21,6 +52,14 @@ export async function POST(req: Request) {
 
     const ratings = parseFeedbackRatings(payload)
     const message = sanitizeText(payload.message)
+    const website = sanitizeText(payload.website)
+
+    if (website) {
+      return NextResponse.json({
+        success: true,
+        message: "Thanks for sharing your feedback."
+      })
+    }
 
     if (!ratings) {
       return NextResponse.json(
@@ -39,6 +78,39 @@ export async function POST(req: Request) {
           message: "Feedback message must be between 10 and 1500 characters."
         },
         { status: 400 }
+      )
+    }
+
+    const deviceKey = getRequestDeviceKey(req)
+    const payloadFingerprint = buildSubmissionFingerprint([
+      message,
+      ...Object.values(ratings)
+    ])
+    const guard = await enforceSubmissionGuards([
+      {
+        scope: "public-submission-device",
+        identifier: deviceKey,
+        rules: PUBLIC_DEVICE_RULES
+      },
+      {
+        scope: "feedback-device",
+        identifier: deviceKey,
+        rules: FEEDBACK_DEVICE_RULES,
+        payloadFingerprint
+      }
+    ])
+
+    if (!guard.allowed) {
+      if (guard.reason === "duplicate") {
+        return NextResponse.json({
+          success: true,
+          message: "Thanks for sharing your feedback."
+        })
+      }
+
+      return createSubmissionLimitResponse(
+        "Too many feedback responses were sent from this device.",
+        guard.retryAfterSeconds
       )
     }
 

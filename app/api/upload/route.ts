@@ -3,21 +3,55 @@ import { connectDB } from "@/lib/mongodb"
 import Order from "@/models/Order"
 import User from "@/models/User"
 import { pusherServer } from "@/lib/pusher-server"
-import { v2 as cloudinary } from "cloudinary"
 import type { UploadApiResponse } from "cloudinary"
 import pdf from "pdf-parse/lib/pdf-parse.js"
 import { sendOrderCreatedNotifications } from "@/lib/order-email"
 import { authenticateUserRequest } from "@/lib/user-auth"
 import { isAcceptedUploadFile, requiresManualPageCount } from "@/lib/upload-file"
+import cloudinary from "@/lib/cloudinary"
+import {
+  buildSubmissionFingerprint,
+  createSubmissionLimitResponse,
+  enforceSubmissionGuards,
+  getRequestDeviceKey
+} from "@/lib/submission-protection"
 
 export const runtime = "nodejs"
 
-// Cloudinary config
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-  api_key: process.env.CLOUDINARY_API_KEY!,
-  api_secret: process.env.CLOUDINARY_API_SECRET!
-})
+const ORDER_DEVICE_RULES = [
+  {
+    name: "order-device-burst",
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 4,
+    blockDurationMs: 30 * 60 * 1000,
+    duplicateCooldownMs: 2 * 60 * 1000
+  },
+  {
+    name: "order-device-daily",
+    windowMs: 24 * 60 * 60 * 1000,
+    maxRequests: 12,
+    blockDurationMs: 24 * 60 * 60 * 1000
+  }
+]
+
+const ORDER_USER_RULES = [
+  {
+    name: "order-user-burst",
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 6,
+    blockDurationMs: 20 * 60 * 1000,
+    duplicateCooldownMs: 2 * 60 * 1000
+  },
+  {
+    name: "order-user-daily",
+    windowMs: 24 * 60 * 60 * 1000,
+    maxRequests: 20,
+    blockDurationMs: 24 * 60 * 60 * 1000
+  }
+]
+
+const VALID_PRINT_TYPES = new Set(["bw", "color", "glossy"])
+const VALID_REQUEST_TYPES = new Set(["global", "specific"])
 
 export async function POST(req: Request) {
 
@@ -34,14 +68,14 @@ export async function POST(req: Request) {
     const requestedUID = String(formData.get("firebaseUID") || "").trim()
     const firebaseUID = auth.uid
     const userEmail = formData.get("userEmail") as string
-    const requestType = formData.get("requestType") as string
-    const supplier = formData.get("supplier") as string
+    const requestType = String(formData.get("requestType") || "").trim()
+    const supplier = String(formData.get("supplier") || "").trim()
     const manualPageCountValue = String(formData.get("pageCount") || "").trim()
 
     // NEW FIELDS
-    const alternatePhone = formData.get("alternatePhone") as string
-    const duplex = formData.get("duplex") as string
-    const instruction = formData.get("instruction") as string
+    const alternatePhone = String(formData.get("alternatePhone") || "").trim()
+    const duplex = String(formData.get("duplex") || "").trim()
+    const instruction = String(formData.get("instruction") || "").trim()
 
     if (!file) {
       return NextResponse.json(
@@ -64,11 +98,81 @@ export async function POST(req: Request) {
       )
     }
 
+    if (!VALID_PRINT_TYPES.has(printType)) {
+      return NextResponse.json(
+        { error: "Invalid print type selected" },
+        { status: 400 }
+      )
+    }
+
+    if (!VALID_REQUEST_TYPES.has(requestType)) {
+      return NextResponse.json(
+        { error: "Invalid request type selected" },
+        { status: 400 }
+      )
+    }
+
+    if (requestType === "specific" && !supplier) {
+      return NextResponse.json(
+        { error: "Select a supplier for a specific request" },
+        { status: 400 }
+      )
+    }
+
+    if (alternatePhone && !/^\d{10,15}$/.test(alternatePhone)) {
+      return NextResponse.json(
+        { error: "Alternate phone must be 10-15 digits" },
+        { status: 400 }
+      )
+    }
+
+    if (instruction.length > 500) {
+      return NextResponse.json(
+        { error: "Instruction must be 500 characters or fewer" },
+        { status: 400 }
+      )
+    }
+
     // Allowed file types
     if (!isAcceptedUploadFile(file)) {
       return NextResponse.json(
         { error: "Unsupported file type. Please upload PDF, DOC, DOCX, PNG, JPG or JPEG files." },
         { status: 400 }
+      )
+    }
+
+    const payloadFingerprint = buildSubmissionFingerprint([
+      firebaseUID,
+      file.name,
+      file.size,
+      file.type,
+      printType,
+      requestType,
+      supplier,
+      manualPageCountValue,
+      alternatePhone,
+      duplex,
+      instruction
+    ])
+    const guard = await enforceSubmissionGuards([
+      {
+        scope: "order-create-device",
+        identifier: getRequestDeviceKey(req),
+        rules: ORDER_DEVICE_RULES,
+        payloadFingerprint
+      },
+      {
+        scope: "order-create-user",
+        identifier: buildSubmissionFingerprint([firebaseUID]),
+        rules: ORDER_USER_RULES,
+        payloadFingerprint
+      }
+    ])
+
+    if (!guard.allowed) {
+      return createSubmissionLimitResponse(
+        "Too many order creation requests were sent from this account or device.",
+        guard.retryAfterSeconds
       )
     }
 

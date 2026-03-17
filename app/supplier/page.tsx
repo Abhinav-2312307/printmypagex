@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react"
 import { auth } from "@/lib/firebase"
-import { onAuthStateChanged } from "firebase/auth"
+import { onAuthStateChanged, type User } from "firebase/auth"
 import Link from "next/link"
 import HeroBackground from "@/components/HeroBackground"
 import ScrollParallax from "@/components/ScrollParallax"
 
 export default function SupplierHome(){
 
-const [user,setUser] = useState<any>(null)
+const [user,setUser] = useState<User | null>(null)
 
 useEffect(()=>{
 

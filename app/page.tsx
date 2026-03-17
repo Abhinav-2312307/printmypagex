@@ -1,5 +1,3 @@
-"use client"
-
 import Navbar from "@/components/Navbar"
 import SmoothScroll from "@/components/SmoothScroll"
 import FeatureCard from "@/components/FeatureCard"
@@ -7,6 +5,7 @@ import OrderFlow from "@/components/OrderFlow"
 import HeroBackground from "@/components/HeroBackground"
 import Link from "next/link"
 import CursorDepth from "@/components/CursorDepth"
+import CurrentYear from "@/components/CurrentYear"
 export default function Home(){
 
 return(
@@ -179,7 +178,7 @@ Create Order
 
 <footer className="border-t border-gray-200 dark:border-gray-800 py-10 text-center text-gray-500">
 
-© {new Date().getFullYear()} PrintMyPage
+© <CurrentYear /> PrintMyPage
 
 </footer>
 

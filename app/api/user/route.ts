@@ -3,6 +3,10 @@ import { connectDB } from "@/lib/mongodb"
 import User from "@/models/User"
 import { authenticateUserRequest } from "@/lib/user-auth"
 
+type UserRecord = {
+  [key: string]: unknown
+}
+
 export async function GET(req: Request) {
 const auth = await authenticateUserRequest(req, {
 requireProfile: false,
@@ -30,7 +34,7 @@ message:"Unauthorized UID"
 },{ status:403 })
 }
 
-const user = await User.findOne({ firebaseUID })
+const user = await User.findOne({ firebaseUID }).lean<UserRecord | null>()
 
 return NextResponse.json({
 success:true,

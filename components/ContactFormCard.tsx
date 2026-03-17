@@ -13,6 +13,7 @@ const [hover,setHover] = useState(false)
 const [name,setName] = useState("")
 const [email,setEmail] = useState("")
 const [message,setMessage] = useState("")
+const [website,setWebsite] = useState("")
 const [isSubmitting,setIsSubmitting] = useState(false)
 const [status,setStatus] = useState<SubmitStatus>(null)
 
@@ -24,7 +25,8 @@ if(isSubmitting) return
 const payload = {
 name: name.trim(),
 email: email.trim(),
-message: message.trim()
+message: message.trim(),
+website: website.trim()
 }
 
 if(!payload.name || !payload.email || !payload.message){
@@ -61,6 +63,7 @@ message: "Message sent successfully."
 setName("")
 setEmail("")
 setMessage("")
+setWebsite("")
 }catch(err){
 setStatus({
 type: "error",
@@ -142,6 +145,21 @@ minLength={10}
 maxLength={2000}
 className="bg-transparent border-b border-gray-300 dark:border-white/20 focus:border-indigo-400 outline-none pb-2 h-24 resize-none placeholder:text-gray-400 transition focus:scale-[1.01]"
 />
+
+<div
+className="absolute left-[-9999px] top-auto h-px w-px overflow-hidden"
+aria-hidden="true"
+>
+  <label htmlFor="contact-website">Website</label>
+  <input
+    id="contact-website"
+    type="text"
+    tabIndex={-1}
+    autoComplete="off"
+    value={website}
+    onChange={(e)=>setWebsite(e.target.value)}
+  />
+</div>
 
 
 <button

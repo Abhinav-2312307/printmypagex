@@ -1,5 +1,3 @@
-"use client"
-
 import SupplierNavbar from "@/components/SupplierNavbar"
 
 export default function SupplierLayout({

@@ -1,5 +1,3 @@
-"use client"
-
 import Navbar from "@/components/Navbar"
 import ContactFormCard from "@/components/ContactFormCard"
 import CreatorFooter from "@/components/CreatorFooter"

@@ -2,7 +2,6 @@
 
 import { useEffect } from "react"
 import Lenis from "lenis"
-import gsap from "gsap"
 
 export default function SmoothScroll() {
 
@@ -16,14 +15,17 @@ smoothWheel: true,
 syncTouch: true
 })
 
-function update(time: number) {
-lenis.raf(time * 1000)
+let frameId = 0
+
+const update = (time: number) => {
+lenis.raf(time)
+frameId = window.requestAnimationFrame(update)
 }
 
-gsap.ticker.add(update)
+frameId = window.requestAnimationFrame(update)
 
 return () => {
-gsap.ticker.remove(update)
+window.cancelAnimationFrame(frameId)
 lenis.destroy()
 }
 

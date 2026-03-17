@@ -5,6 +5,44 @@ import User from "@/models/User"
 import { isAlphabeticText, isNumeric, normalizeText } from "@/lib/form-validation"
 import { authenticateUserRequest } from "@/lib/user-auth"
 import { mergeUserRoles } from "@/lib/user-roles"
+import {
+buildSubmissionFingerprint,
+createSubmissionLimitResponse,
+enforceSubmissionGuards,
+getRequestDeviceKey
+} from "@/lib/submission-protection"
+
+const SUPPLIER_APPLY_DEVICE_RULES = [
+{
+name: "supplier-apply-device-daily",
+windowMs: 24 * 60 * 60 * 1000,
+maxRequests: 3,
+blockDurationMs: 24 * 60 * 60 * 1000,
+duplicateCooldownMs: 10 * 60 * 1000
+},
+{
+name: "supplier-apply-device-weekly",
+windowMs: 7 * 24 * 60 * 60 * 1000,
+maxRequests: 6,
+blockDurationMs: 7 * 24 * 60 * 60 * 1000
+}
+]
+
+const SUPPLIER_APPLY_USER_RULES = [
+{
+name: "supplier-apply-user-daily",
+windowMs: 24 * 60 * 60 * 1000,
+maxRequests: 2,
+blockDurationMs: 24 * 60 * 60 * 1000,
+duplicateCooldownMs: 10 * 60 * 1000
+},
+{
+name: "supplier-apply-user-weekly",
+windowMs: 7 * 24 * 60 * 60 * 1000,
+maxRequests: 4,
+blockDurationMs: 7 * 24 * 60 * 60 * 1000
+}
+]
 
 export async function POST(req: Request){
 
@@ -65,6 +103,36 @@ if(!Number.isInteger(yearNum) || yearNum < 1 || yearNum > 8){
 return NextResponse.json({
 error: "Year must be a number between 1 and 8"
 },{ status:400 })
+}
+
+const payloadFingerprint = buildSubmissionFingerprint([
+auth.uid,
+name,
+phone,
+rollNo,
+branch,
+yearNum
+])
+const guard = await enforceSubmissionGuards([
+{
+scope: "supplier-apply-device",
+identifier: getRequestDeviceKey(req),
+rules: SUPPLIER_APPLY_DEVICE_RULES,
+payloadFingerprint
+},
+{
+scope: "supplier-apply-user",
+identifier: buildSubmissionFingerprint([auth.uid]),
+rules: SUPPLIER_APPLY_USER_RULES,
+payloadFingerprint
+}
+])
+
+if(!guard.allowed){
+return createSubmissionLimitResponse(
+"Too many supplier application attempts were sent from this account or device.",
+guard.retryAfterSeconds
+)
 }
 
 const existing = await Supplier.findOne({

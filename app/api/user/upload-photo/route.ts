@@ -2,17 +2,11 @@ import { NextResponse } from "next/server"
 import { connectDB } from "@/lib/mongodb"
 import User from "@/models/User"
 import Supplier from "@/models/Supplier"
-import { v2 as cloudinary } from "cloudinary"
 import type { UploadApiResponse } from "cloudinary"
 import { authenticateUserRequest } from "@/lib/user-auth"
+import cloudinary from "@/lib/cloudinary"
 
 export const runtime = "nodejs"
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-  api_key: process.env.CLOUDINARY_API_KEY!,
-  api_secret: process.env.CLOUDINARY_API_SECRET!
-})
 
 export async function POST(req: Request) {
   try {

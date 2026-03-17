@@ -16,6 +16,10 @@ type AdminAuthFailure = {
 
 type AdminAuthResult = AdminAuthSuccess | AdminAuthFailure
 
+type AdminUserRecord = {
+  role?: string
+}
+
 function getOwnerEmails() {
   const raw = process.env.ADMIN_OWNER_EMAILS || ""
   return raw
@@ -81,7 +85,9 @@ export async function authenticateAdminRequest(req: Request): Promise<AdminAuthR
     }
 
     await connectDB()
-    const adminUser = await User.findOne({ firebaseUID: decoded.uid }).select("role")
+    const adminUser = await User.findOne({ firebaseUID: decoded.uid })
+      .select("role")
+      .lean<AdminUserRecord | null>()
 
     if (!adminUser || adminUser.role !== "ADMIN") {
       return {
