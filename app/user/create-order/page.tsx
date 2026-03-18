@@ -5,7 +5,7 @@ import { auth } from "@/lib/firebase"
 import Navbar from "@/components/Navbar"
 import RoleGuard from "@/components/RoleGuard"
 import toast from "react-hot-toast"
-import { authFetch } from "@/lib/client-auth"
+import { authFetch, authUploadWithProgress } from "@/lib/client-auth"
 import {
   isAcceptedUploadFile,
   requiresManualPageCount,
@@ -19,6 +19,46 @@ import {
 } from "@/lib/print-pricing"
 import { usePrintPricing } from "@/lib/use-print-pricing"
 
+type UploadProgressState = {
+  stage: "uploading" | "processing"
+  startedAt: number
+  loaded: number
+  total: number | null
+  speedBytesPerSecond: number | null
+}
+
+type UploadResponseData = {
+  error?: string
+  estimatedPrice?: number
+  pages?: number
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B"
+
+  const units = ["B", "KB", "MB", "GB"]
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const value = bytes / 1024 ** unitIndex
+
+  return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`
+}
+
+function formatElapsedTime(ms: number) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`
+}
+
+function getUploadProgressPercent(progress: UploadProgressState | null) {
+  if (!progress?.total || progress.total <= 0) {
+    return progress?.stage === "processing" ? 100 : null
+  }
+
+  return Math.min(100, Math.round((progress.loaded / progress.total) * 100))
+}
+
 export default function CreateOrderPage() {
 
   const [file, setFile] = useState<File | null>(null)
@@ -26,12 +66,36 @@ export default function CreateOrderPage() {
   const [requestType, setRequestType] = useState("global")
   const [supplier, setSupplier] = useState("")
   const [pageCount, setPageCount] = useState("")
+  const [instruction, setInstruction] = useState("")
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [suppliers, setSuppliers] = useState<SupplierSelectorItem[]>([])
   const [loadingSuppliers, setLoadingSuppliers] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(null)
+  const [elapsedUploadTime, setElapsedUploadTime] = useState(0)
   const { pricing } = usePrintPricing()
+  const uploadStartedAt = uploadProgress?.startedAt ?? null
+
+  useEffect(() => {
+    if (uploadStartedAt === null) {
+      setElapsedUploadTime(0)
+      return
+    }
+
+    const syncElapsedTime = () => {
+      setElapsedUploadTime(Date.now() - uploadStartedAt)
+    }
+
+    syncElapsedTime()
+    const timer = window.setInterval(syncElapsedTime, 500)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [uploadStartedAt])
+
+  const uploadPercent = getUploadProgressPercent(uploadProgress)
 
   useEffect(() => {
     let active = true
@@ -105,6 +169,17 @@ export default function CreateOrderPage() {
     }
 
     setSubmitting(true)
+    const startedAt = Date.now()
+    let lastLoaded = 0
+    let lastMeasuredAt = startedAt
+    let lastSpeedBytesPerSecond: number | null = null
+    setUploadProgress({
+      stage: "uploading",
+      startedAt,
+      loaded: 0,
+      total: null,
+      speedBytesPerSecond: null
+    })
 
     const formData = new FormData()
     const fallbackEmail = user.email || user.providerData?.[0]?.email || ""
@@ -115,31 +190,87 @@ export default function CreateOrderPage() {
     formData.append("userEmail", fallbackEmail)
     formData.append("requestType", requestType)
     formData.append("supplier", supplier)
+    formData.append("instruction", instruction.trim())
 
     if (manualPageCount) {
       formData.append("pageCount", manualPageCount)
     }
 
-    const res = await authFetch("/api/upload", {
-      method: "POST",
-      body: formData
-    })
+    try {
+      const res = await authUploadWithProgress(
+        "/api/upload",
+        {
+          method: "POST",
+          body: formData
+        },
+        {
+          onUploadProgress: ({ loaded, total }) => {
+            const now = Date.now()
+            const elapsedSinceLastMeasure = now - lastMeasuredAt
 
-    const data = await res.json()
+            if (elapsedSinceLastMeasure > 0) {
+              const nextSpeed = ((loaded - lastLoaded) * 1000) / elapsedSinceLastMeasure
 
-    setSubmitting(false)
+              if (Number.isFinite(nextSpeed) && nextSpeed > 0) {
+                lastSpeedBytesPerSecond = nextSpeed
+              }
+            }
 
-    if (data.error) {
-      toast.error(data.error)
+            lastLoaded = loaded
+            lastMeasuredAt = now
+            setUploadProgress({
+              stage: "uploading",
+              startedAt,
+              loaded,
+              total,
+              speedBytesPerSecond: lastSpeedBytesPerSecond
+            })
+          },
+          onUploadComplete: () => {
+            setUploadProgress((current) => {
+              if (!current) {
+                return {
+                  stage: "processing",
+                  startedAt,
+                  loaded: lastLoaded,
+                  total: lastLoaded || null,
+                  speedBytesPerSecond: null
+                }
+              }
 
-      return
-    }
-    
-    toast.success(`Pages: ${data.pages} | Estimated Price: ₹${data.estimatedPrice}`)
-    setFile(null)
-    setPageCount("")
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
+              const completedBytes = current.total ?? current.loaded
+
+              return {
+                ...current,
+                stage: "processing",
+                loaded: completedBytes,
+                total: current.total ?? (completedBytes || null),
+                speedBytesPerSecond: null
+              }
+            })
+          }
+        }
+      )
+
+      const data = await res.json() as UploadResponseData
+
+      if (!res.ok || data.error) {
+        toast.error(data.error || "Upload failed")
+        return
+      }
+
+      toast.success(`Pages: ${data.pages} | Estimated Price: ₹${data.estimatedPrice}`)
+      setFile(null)
+      setPageCount("")
+      setInstruction("")
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Upload failed")
+    } finally {
+      setSubmitting(false)
+      setUploadProgress(null)
     }
   }
 
@@ -277,13 +408,76 @@ export default function CreateOrderPage() {
               </div>
             )}
 
+            <div>
+              <label className="block mb-2 text-sm text-gray-400">
+                Instructions for Supplier
+              </label>
+              <textarea
+                value={instruction}
+                maxLength={500}
+                onChange={(e) => setInstruction(e.target.value)}
+                placeholder="Any binding, print quality, page-side, or delivery note..."
+                className="w-full rounded-lg border border-gray-700 bg-dark p-3 min-h-28"
+              />
+              <p className="mt-2 text-xs text-gray-400">
+                Optional. Visible to the supplier. {instruction.length}/500
+              </p>
+            </div>
+
             <button
               type="submit"
               disabled={submitting}
               className="w-full py-3 bg-primary text-black rounded-xl font-semibold hover:opacity-90 disabled:opacity-50"
             >
-              {submitting ? "Processing..." : "Create Order"}
+              {submitting
+                ? uploadProgress?.stage === "processing"
+                  ? "Finalizing order..."
+                  : uploadPercent !== null
+                    ? `Uploading ${uploadPercent}%...`
+                    : "Uploading..."
+                : "Create Order"}
             </button>
+
+            {submitting && uploadProgress && (
+              <div
+                aria-live="polite"
+                className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-4 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium text-slate-800 dark:text-white">
+                    {uploadProgress.stage === "uploading"
+                      ? "Uploading your file"
+                      : "Upload complete. Creating your order"}
+                  </p>
+                  <span className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+                    {uploadPercent !== null ? `${uploadPercent}%` : "LIVE"}
+                  </span>
+                </div>
+
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width] duration-300"
+                    style={{ width: `${uploadPercent ?? 8}%` }}
+                  />
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500 dark:text-slate-300">
+                  <span>
+                    {uploadProgress.total
+                      ? `${formatBytes(uploadProgress.loaded)} / ${formatBytes(uploadProgress.total)}`
+                      : `${formatBytes(uploadProgress.loaded)} uploaded`}
+                  </span>
+                  <span>
+                    {uploadProgress.stage === "uploading"
+                      ? uploadProgress.speedBytesPerSecond
+                        ? `${formatBytes(uploadProgress.speedBytesPerSecond)}/s`
+                        : "Measuring speed..."
+                      : "Counting pages and saving order..."}
+                  </span>
+                  <span>{formatElapsedTime(elapsedUploadTime)}</span>
+                </div>
+              </div>
+            )}
 
             </form>
 

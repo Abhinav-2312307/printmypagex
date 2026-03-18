@@ -29,6 +29,9 @@ type SupplierOrderDetail = {
   estimatedPrice?: number
   finalPrice?: number | null
   fileURL?: string
+  duplex?: boolean
+  instruction?: string
+  alternatePhone?: string
   userProfile?: {
     name?: string
     email?: string
@@ -631,6 +634,12 @@ Final Price: ₹{selectedOrder.finalPrice ?? "Not calculated"}
 Final Price: ₹{selectedOrder.finalPrice}
 </p>
 )}
+
+<p>Duplex: {selectedOrder.duplex ? "Yes" : "No"}</p>
+
+<p>Instruction: {selectedOrder.instruction?.trim() || "None"}</p>
+
+<p>Alternate Phone: {selectedOrder.alternatePhone?.trim() || "None"}</p>
 
 <p>Status: {formatStatus(selectedOrder.status)}</p>
 <p>Payment: {selectedOrder.paymentStatus}</p>

@@ -7,11 +7,17 @@ type AuthFetchOptions = {
   forceRefresh?: boolean
 }
 
-export async function authFetch(
-  input: RequestInfo | URL,
-  init: RequestInit = {},
-  options: AuthFetchOptions = {}
-) {
+type AuthUploadProgress = {
+  loaded: number
+  total: number | null
+}
+
+type AuthUploadHandlers = {
+  onUploadComplete?: () => void
+  onUploadProgress?: (progress: AuthUploadProgress) => void
+}
+
+async function getAuthenticatedUser() {
   let user = auth.currentUser
   if (!user) {
     user = await new Promise<User | null>((resolve) => {
@@ -26,12 +32,123 @@ export async function authFetch(
     throw new Error("Authentication required")
   }
 
+  return user
+}
+
+function buildAuthorizedHeaders(headers: HeadersInit | undefined, token: string) {
+  const nextHeaders = new Headers(headers || {})
+  nextHeaders.set("Authorization", `Bearer ${token}`)
+  return nextHeaders
+}
+
+function parseResponseHeaders(rawHeaders: string) {
+  const headers = new Headers()
+
+  rawHeaders
+    .trim()
+    .split(/[\r\n]+/)
+    .forEach((line) => {
+      if (!line) return
+
+      const separatorIndex = line.indexOf(":")
+      if (separatorIndex === -1) return
+
+      headers.append(
+        line.slice(0, separatorIndex).trim(),
+        line.slice(separatorIndex + 1).trim()
+      )
+    })
+
+  return headers
+}
+
+export async function authFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  options: AuthFetchOptions = {}
+) {
+  const user = await getAuthenticatedUser()
   const token = await user.getIdToken(Boolean(options.forceRefresh))
-  const headers = new Headers(init.headers || {})
-  headers.set("Authorization", `Bearer ${token}`)
+  const headers = buildAuthorizedHeaders(init.headers, token)
 
   return fetch(input, {
     ...init,
     headers
+  })
+}
+
+export async function authUploadWithProgress(
+  input: string | URL,
+  init: Omit<RequestInit, "body"> & { body: Document | XMLHttpRequestBodyInit },
+  handlers: AuthUploadHandlers = {},
+  options: AuthFetchOptions = {}
+) {
+  const user = await getAuthenticatedUser()
+  const token = await user.getIdToken(Boolean(options.forceRefresh))
+  const headers = buildAuthorizedHeaders(init.headers, token)
+
+  return new Promise<Response>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    const abortSignal = init.signal
+    const abortUpload = () => {
+      xhr.abort()
+    }
+
+    xhr.open(init.method || "GET", input.toString())
+    headers.forEach((value, key) => {
+      xhr.setRequestHeader(key, value)
+    })
+
+    xhr.upload.addEventListener("progress", (event) => {
+      handlers.onUploadProgress?.({
+        loaded: event.loaded,
+        total: event.lengthComputable ? event.total : null
+      })
+    })
+
+    xhr.upload.addEventListener("load", () => {
+      handlers.onUploadComplete?.()
+    })
+
+    xhr.addEventListener("load", () => {
+      if (abortSignal) {
+        abortSignal.removeEventListener("abort", abortUpload)
+      }
+
+      resolve(
+        new Response(xhr.responseText, {
+          headers: parseResponseHeaders(xhr.getAllResponseHeaders()),
+          status: xhr.status,
+          statusText: xhr.statusText
+        })
+      )
+    })
+
+    xhr.addEventListener("error", () => {
+      if (abortSignal) {
+        abortSignal.removeEventListener("abort", abortUpload)
+      }
+
+      reject(new Error("Network error while uploading file."))
+    })
+
+    xhr.addEventListener("abort", () => {
+      if (abortSignal) {
+        abortSignal.removeEventListener("abort", abortUpload)
+      }
+
+      reject(new Error("Upload was cancelled."))
+    })
+
+    if (abortSignal) {
+      if (abortSignal.aborted) {
+        xhr.abort()
+        return
+      }
+
+      abortSignal.addEventListener("abort", abortUpload, { once: true })
+    }
+
+    xhr.send(init.body)
   })
 }
