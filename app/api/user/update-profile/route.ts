@@ -94,7 +94,7 @@ export async function POST(req: Request) {
           phone
         }
       },
-      { new: true }
+      { returnDocument: "after" }
     )
 
     if (!user) {

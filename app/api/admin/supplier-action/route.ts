@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     const supplier = await Supplier.findOneAndUpdate(
       { firebaseUID },
       { approved, active: approved },
-      { new: true }
+      { returnDocument: "after" }
     )
 
     if (!supplier) {
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     const supplier = await Supplier.findOneAndUpdate(
       { firebaseUID },
       { active: action === "activate" },
-      { new: true }
+      { returnDocument: "after" }
     )
 
     if (!supplier) {

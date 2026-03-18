@@ -8,6 +8,8 @@ import { pusherClient } from "@/lib/pusher-client"
 import SupplierGuard from "@/components/SupplierGuard"
 import ProfileCard from "@/components/ProfileCard"
 import { authFetch } from "@/lib/client-auth"
+import { calculatePrintPrice, getPriceForPrintType } from "@/lib/print-pricing"
+import { usePrintPricing } from "@/lib/use-print-pricing"
 
 type SupplierOrderDetail = {
   _id: string
@@ -51,6 +53,7 @@ const [uid,setUid] = useState<string | null>(null)
 const [filter,setFilter] = useState("pending")
 const [verifiedPages,setVerifiedPages] = useState<number>(0)
 const [showAcceptConfirm,setShowAcceptConfirm] = useState(false)
+const { pricing } = usePrintPricing()
 
 async function loadOrders(uid:string){
 
@@ -606,16 +609,16 @@ className="ml-3 w-20 rounded bg-white/80 dark:bg-black border border-gray-300 da
 <p>Print Type: {selectedOrder.printType}</p>
 
 <p>
+Current Rate: ₹{getPriceForPrintType(selectedOrder.printType, pricing)}/page
+</p>
+
+<p>
 Estimated Price: ₹{selectedOrder.estimatedPrice}
 </p>
 
 <p>
 Updated Final Price (Preview): ₹{verifiedPages > 0
-? (selectedOrder.printType === "color"
-? verifiedPages * 5
-: selectedOrder.printType === "glossy"
-? verifiedPages * 15
-: verifiedPages * 2)
+? calculatePrintPrice(verifiedPages, selectedOrder.printType, pricing)
 : "Enter pages"}
 </p>
 

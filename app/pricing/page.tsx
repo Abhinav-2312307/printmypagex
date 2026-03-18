@@ -1,39 +1,13 @@
 import Navbar from "@/components/Navbar"
+import { getPricingPlans } from "@/lib/print-pricing"
+import { getPrintPricing } from "@/lib/print-pricing-store"
 
-export default function PricingPage() {
+export const dynamic = "force-dynamic"
 
-const plans = [
-{
-title:"Black & White",
-price:"₹2 / page",
-desc:"Standard document printing",
-features:[
-"A4 printing",
-"Clear text quality",
-"Fast processing"
-]
-},
-{
-title:"Color Print",
-price:"₹5 / page",
-desc:"High quality color prints",
-features:[
-"Color graphics",
-"Charts & diagrams",
-"Project reports"
-]
-},
-{
-title:"Glossy Print",
-price:"₹15 / page",
-desc:"Premium glossy printing",
-features:[
-"Photos",
-"Posters",
-"Presentation covers"
-]
-}
-]
+export default async function PricingPage() {
+
+const pricing = await getPrintPricing()
+const plans = getPricingPlans(pricing)
 
 return (
 
@@ -69,11 +43,11 @@ className="relative group backdrop-blur-xl bg-white/10 dark:bg-white/5 border bo
 </h2>
 
 <p className="text-4xl font-bold text-indigo-500 mb-4">
-{plan.price}
+{plan.priceLabel}
 </p>
 
 <p className="text-gray-600 dark:text-gray-400 mb-6">
-{plan.desc}
+{plan.description}
 </p>
 
 <ul className="space-y-3 text-sm mb-8">

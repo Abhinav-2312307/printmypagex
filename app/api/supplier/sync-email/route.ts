@@ -59,7 +59,7 @@ export async function POST(req: Request) {
           ...(photoURL ? { firebasePhotoURL: photoURL } : {})
         }
       },
-      { new: true }
+      { returnDocument: "after" }
     )
 
     if (!supplier) {
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
           ...(photoURL ? { firebasePhotoURL: photoURL } : {})
         }
       },
-      { new: true }
+      { returnDocument: "after" }
     )
 
     console.log("SUPPLIER_PROFILE_DEBUG: Synced supplier profile fields", {

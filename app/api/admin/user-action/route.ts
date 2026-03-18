@@ -57,7 +57,7 @@ export async function POST(req: Request) {
           roles: roleState.roles
         }
       },
-      { new: true }
+      { returnDocument: "after" }
     )
 
     return NextResponse.json({ success: true, user })
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     const user = await User.findOneAndUpdate(
       { firebaseUID },
       { active: action === "activate" },
-      { new: true }
+      { returnDocument: "after" }
     )
 
     if (!user) {
@@ -84,7 +84,7 @@ export async function POST(req: Request) {
     const user = await User.findOneAndUpdate(
       { firebaseUID },
       { approved: action === "approve" },
-      { new: true }
+      { returnDocument: "after" }
     )
 
     if (!user) {

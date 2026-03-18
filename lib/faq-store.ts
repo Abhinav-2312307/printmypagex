@@ -44,7 +44,7 @@ export async function saveFaqContentSnapshot(
     },
     {
       upsert: true,
-      new: true,
+      returnDocument: "after",
       setDefaultsOnInsert: true
     }
   ).lean<FaqDoc>()

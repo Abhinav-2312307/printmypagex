@@ -12,6 +12,12 @@ import {
   UPLOAD_ACCEPT_ATTRIBUTE
 } from "@/lib/upload-file"
 import SupplierSelector, { type SupplierSelectorItem } from "@/components/SupplierSelector"
+import OrderingPolicyCard from "@/components/OrderingPolicyCard"
+import {
+  PRINT_TYPE_CONTENT,
+  PRINT_TYPE_KEYS
+} from "@/lib/print-pricing"
+import { usePrintPricing } from "@/lib/use-print-pricing"
 
 export default function CreateOrderPage() {
 
@@ -25,6 +31,7 @@ export default function CreateOrderPage() {
   const [suppliers, setSuppliers] = useState<SupplierSelectorItem[]>([])
   const [loadingSuppliers, setLoadingSuppliers] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const { pricing } = usePrintPricing()
 
   useEffect(() => {
     let active = true
@@ -143,13 +150,34 @@ export default function CreateOrderPage() {
 
       <div className="flex justify-center items-center py-20 px-6">
 
-        <div className="bg-card w-full max-w-xl p-10 rounded-2xl shadow-lg">
+        <div className="w-full max-w-xl space-y-6">
+          <OrderingPolicyCard />
 
-          <h1 className="text-3xl font-bold mb-8">
-            Create Print Order
-          </h1>
+          <div className="bg-card p-10 rounded-2xl shadow-lg">
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="mb-8 flex flex-col gap-4">
+              <div>
+                <h1 className="text-3xl font-bold">
+                  Create Print Order
+                </h1>
+                <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">
+                  The prices below are live and match the current admin-configured rates.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {PRINT_TYPE_KEYS.map((key) => (
+                  <span
+                    key={key}
+                    className="rounded-full border border-slate-200 bg-white/70 px-3 py-1.5 text-xs font-medium text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                  >
+                    {PRINT_TYPE_CONTENT[key].shortLabel}: ₹{pricing[key]}/page
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-6">
 
             <div>
               <label className="block mb-2 text-sm text-gray-400">
@@ -204,9 +232,11 @@ export default function CreateOrderPage() {
                 onChange={(e) => setPrintType(e.target.value)}
                 className="w-full bg-dark p-3 rounded-lg border border-gray-700"
               >
-                <option value="bw">Black & White (₹2)</option>
-                <option value="color">Color (₹5)</option>
-                <option value="glossy">Glossy (₹15)</option>
+                {PRINT_TYPE_KEYS.map((key) => (
+                  <option key={key} value={key}>
+                    {PRINT_TYPE_CONTENT[key].shortLabel} (₹{pricing[key]})
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -255,8 +285,9 @@ export default function CreateOrderPage() {
               {submitting ? "Processing..." : "Create Order"}
             </button>
 
-          </form>
+            </form>
 
+          </div>
         </div>
 
       </div>

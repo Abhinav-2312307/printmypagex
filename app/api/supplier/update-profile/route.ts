@@ -57,7 +57,7 @@ export async function POST(req: Request) {
           phone
         }
       },
-      { new: true }
+      { returnDocument: "after" }
     )
 
     if (!supplier) {
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
           roles: supplierRoleState.roles
         }
       },
-      { new: true }
+      { returnDocument: "after" }
     )
 
     return NextResponse.json({

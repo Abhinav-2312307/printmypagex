@@ -166,7 +166,7 @@ active: existingUser?.active ?? true
 },
 {
 upsert: true,
-new: true
+returnDocument: "after"
 }
 )
 
@@ -220,7 +220,7 @@ active: existingUser?.active ?? true
 
 {
 upsert: true,
-new: true
+returnDocument: "after"
 }
 
 )

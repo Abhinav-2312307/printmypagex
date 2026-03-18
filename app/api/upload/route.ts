@@ -9,6 +9,8 @@ import { sendOrderCreatedNotifications } from "@/lib/order-email"
 import { authenticateUserRequest } from "@/lib/user-auth"
 import { isAcceptedUploadFile, requiresManualPageCount } from "@/lib/upload-file"
 import cloudinary from "@/lib/cloudinary"
+import { calculatePrintPrice } from "@/lib/print-pricing"
+import { getPrintPricing } from "@/lib/print-pricing-store"
 import {
   buildSubmissionFingerprint,
   createSubmissionLimitResponse,
@@ -240,14 +242,8 @@ export async function POST(req: Request) {
     }
 
     // Price calculation
-    const priceMap: Record<string, number> = {
-      bw: 2,
-      color: 5,
-      glossy: 15
-    }
-
-    const pricePerPage = priceMap[printType] || 2
-    const estimatedPrice = pages * pricePerPage
+    const pricing = await getPrintPricing()
+    const estimatedPrice = calculatePrintPrice(pages, printType, pricing)
 
     // Detect file type for Cloudinary
     const isImage = file.type.startsWith("image/")

@@ -71,7 +71,7 @@ export async function POST(req: Request) {
     const user = await User.findOneAndUpdate(
       { firebaseUID },
       { $set: { photoURL } },
-      { new: true }
+      { returnDocument: "after" }
     )
 
     if (!user) {
@@ -84,7 +84,7 @@ export async function POST(req: Request) {
     const supplier = await Supplier.findOneAndUpdate(
       { firebaseUID },
       { $set: { photoURL } },
-      { new: true }
+      { returnDocument: "after" }
     )
 
     return NextResponse.json({

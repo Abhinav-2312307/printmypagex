@@ -22,6 +22,12 @@ import {
   CartesianGrid
 } from "recharts"
 import SupplierSelector, { type SupplierSelectorItem } from "@/components/SupplierSelector"
+import OrderingPolicyCard from "@/components/OrderingPolicyCard"
+import {
+  PRINT_TYPE_CONTENT,
+  PRINT_TYPE_KEYS
+} from "@/lib/print-pricing"
+import { usePrintPricing } from "@/lib/use-print-pricing"
 
 type DashboardOrder = {
   createdAt: string
@@ -85,6 +91,7 @@ export default function UserDashboard() {
 
   const [duplex, setDuplex] = useState(false)
   const [instruction, setInstruction] = useState("")
+  const { pricing } = usePrintPricing()
 
   useEffect(() => {
 
@@ -452,13 +459,33 @@ className="bg-card p-5 sm:p-6 md:p-8 rounded-3xl shadow-2xl"
 
 </div>
 
+<OrderingPolicyCard />
+
 {/* CREATE ORDER */}
 
 <div className="bg-card backdrop-blur-none p-5 sm:p-7 md:p-10 rounded-3xl shadow-xl">
 
-<h2 className="text-2xl font-semibold mb-6">
+<div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+<div>
+<h2 className="text-2xl font-semibold">
 Create New Order
 </h2>
+<p className="mt-2 text-sm text-slate-500 dark:text-slate-300">
+Live print rates update from the admin portal and are applied during order estimation and verification.
+</p>
+</div>
+
+<div className="flex flex-wrap gap-2">
+{PRINT_TYPE_KEYS.map((key)=>(
+<span
+key={key}
+className="rounded-full border border-slate-200 bg-white/70 px-3 py-1.5 text-xs font-medium text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+>
+{PRINT_TYPE_CONTENT[key].shortLabel}: ₹{pricing[key]}/page
+</span>
+))}
+</div>
+</div>
 
 {!showForm && (
 
@@ -495,9 +522,11 @@ value={printType}
 onChange={(e)=>setPrintType(e.target.value)}
 className="input w-full"
 >
-<option value="bw">Black & White (₹2)</option>
-<option value="color">Color (₹5)</option>
-<option value="glossy">Glossy (₹15)</option>
+{PRINT_TYPE_KEYS.map((key)=>(
+<option key={key} value={key}>
+{PRINT_TYPE_CONTENT[key].shortLabel} (₹{pricing[key]})
+</option>
+))}
 </select>
 
 <select

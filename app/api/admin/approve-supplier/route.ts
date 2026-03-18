@@ -27,7 +27,7 @@ export async function POST(req:Request){
       approved,
       active
     },
-    { new: true }
+    { returnDocument: "after" }
   )
 
   if (!supplier) {

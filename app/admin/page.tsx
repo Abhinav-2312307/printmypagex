@@ -39,6 +39,15 @@ import CursorDepth from "@/components/CursorDepth"
 import FeedbackPanel, { type AdminFeedback } from "@/components/admin/FeedbackPanel"
 import FaqManager from "@/components/admin/FaqManager"
 import {
+  DEFAULT_PRINT_PRICING,
+  PRINT_TYPE_CONTENT,
+  PRINT_TYPE_KEYS,
+  formatPricePerPage,
+  normalizePrintPricing,
+  type PrintPricing,
+  type PrintType
+} from "@/lib/print-pricing"
+import {
   defaultFaqContentSnapshot,
   type FAQContentSnapshot
 } from "@/lib/faq-content"
@@ -48,6 +57,7 @@ type Tab =
   | "users"
   | "suppliers"
   | "orders"
+  | "pricing"
   | "payments"
   | "payouts"
   | "feedback"
@@ -186,6 +196,11 @@ type ClearDbResponse = {
 type AdminResponse = {
   message?: string
   success?: boolean
+}
+
+type PricingResponse = {
+  prices: PrintPricing
+  message?: string
 }
 
 type SpotlightResult = {
@@ -333,6 +348,12 @@ export default function AdminPortalPage() {
   const [payoutRequests, setPayoutRequests] = useState<AdminPayoutRequest[]>([])
   const [feedbacks, setFeedbacks] = useState<AdminFeedback[]>([])
   const [faqContent, setFaqContent] = useState<FAQContentSnapshot>(defaultFaqContentSnapshot)
+  const [pricing, setPricing] = useState<PrintPricing>(DEFAULT_PRINT_PRICING)
+  const [pricingForm, setPricingForm] = useState<Record<PrintType, string>>({
+    bw: String(DEFAULT_PRINT_PRICING.bw),
+    color: String(DEFAULT_PRINT_PRICING.color),
+    glossy: String(DEFAULT_PRINT_PRICING.glossy)
+  })
 
   const [adminEmail, setAdminEmail] = useState("")
   const [menuOpen, setMenuOpen] = useState(false)
@@ -415,11 +436,22 @@ export default function AdminPortalPage() {
   }, [])
 
   const loadAll = useCallback(async () => {
-    const [overviewRes, usersRes, suppliersRes, ordersRes, paymentsRes, payoutsRes, feedbacksRes, faqsRes] = await Promise.all([
+    const [
+      overviewRes,
+      usersRes,
+      suppliersRes,
+      ordersRes,
+      pricingRes,
+      paymentsRes,
+      payoutsRes,
+      feedbacksRes,
+      faqsRes
+    ] = await Promise.all([
       adminFetch<OverviewResponse>("/api/admin/overview"),
       adminFetch<{ users: AdminUser[] }>("/api/admin/users"),
       adminFetch<{ suppliers: AdminSupplier[] }>("/api/admin/suppliers"),
       adminFetch<{ orders: AdminOrder[] }>("/api/admin/orders"),
+      adminFetch<PricingResponse>("/api/admin/pricing"),
       adminFetch<{ payments: PaymentLog[] }>("/api/admin/payments"),
       adminFetch<{ requests: AdminPayoutRequest[] }>("/api/admin/payout-requests"),
       adminFetch<{ feedbacks: AdminFeedback[] }>("/api/admin/feedback"),
@@ -430,6 +462,13 @@ export default function AdminPortalPage() {
     setUsers(usersRes.users || [])
     setSuppliers(suppliersRes.suppliers || [])
     setOrders(ordersRes.orders || [])
+    const nextPricing = normalizePrintPricing(pricingRes.prices)
+    setPricing(nextPricing)
+    setPricingForm({
+      bw: String(nextPricing.bw),
+      color: String(nextPricing.color),
+      glossy: String(nextPricing.glossy)
+    })
     setPayments(paymentsRes.payments || [])
     setPayoutRequests(payoutsRes.requests || [])
     setFeedbacks(feedbacksRes.feedbacks || [])
@@ -546,6 +585,49 @@ export default function AdminPortalPage() {
 
       setFaqContent(response.content || defaultFaqContentSnapshot)
       setMessage(response.message || "FAQ content updated")
+      setLastSyncedAt(new Date())
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError))
+    } finally {
+      setBusyAction("")
+    }
+  }
+
+  const savePricing = async () => {
+    const nextPricing = {} as PrintPricing
+
+    for (const key of PRINT_TYPE_KEYS) {
+      const parsed = Number(pricingForm[key])
+
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setError(`${PRINT_TYPE_CONTENT[key].title} price must be greater than 0`)
+        return
+      }
+
+      nextPricing[key] = parsed
+    }
+
+    try {
+      setBusyAction("save-pricing")
+      setMessage("")
+      setError("")
+
+      const response = await adminFetch<PricingResponse>("/api/admin/pricing", {
+        method: "PUT",
+        body: JSON.stringify({
+          prices: nextPricing
+        })
+      })
+
+      const normalizedPricing = normalizePrintPricing(response.prices)
+
+      setPricing(normalizedPricing)
+      setPricingForm({
+        bw: String(normalizedPricing.bw),
+        color: String(normalizedPricing.color),
+        glossy: String(normalizedPricing.glossy)
+      })
+      setMessage(response.message || "Pricing updated successfully")
       setLastSyncedAt(new Date())
     } catch (caughtError) {
       setError(getErrorMessage(caughtError))
@@ -1212,6 +1294,7 @@ export default function AdminPortalPage() {
     { value: "users", label: "Users" },
     { value: "suppliers", label: "Suppliers" },
     { value: "orders", label: "Orders" },
+    { value: "pricing", label: "Pricing" },
     { value: "payments", label: "Payments" },
     { value: "payouts", label: "Payouts" },
     { value: "feedback", label: "Feedback" },
@@ -2041,6 +2124,94 @@ export default function AdminPortalPage() {
             </div>
           ) : null}
 
+          {activeTab === "pricing" ? (
+            <div className="space-y-4">
+              <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-4">
+                <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-6">
+                  <p className="text-xs uppercase tracking-[0.18em] text-indigo-500 dark:text-cyan-300">
+                    Live Pricing Engine
+                  </p>
+                  <h3 className="mt-2 text-2xl font-semibold">Control print rates from the admin portal</h3>
+                  <p className="mt-3 max-w-2xl text-sm text-gray-600 dark:text-gray-300">
+                    Changes here update new order estimates, supplier verification pricing, the public landing pricing cards, and admin-side recalculation flows.
+                  </p>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                    {PRINT_TYPE_KEYS.map((key) => (
+                      <div
+                        key={key}
+                        className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/85 dark:bg-white/5 p-4"
+                      >
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{PRINT_TYPE_CONTENT[key].title}</p>
+                        <p className="mt-2 text-2xl font-semibold">{formatPricePerPage(pricing[key])}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-indigo-500 dark:text-cyan-300">
+                        Edit Rates
+                      </p>
+                      <h3 className="mt-2 text-xl font-semibold">Update per-page prices</h3>
+                    </div>
+                    <button
+                      onClick={() =>
+                        setPricingForm({
+                          bw: String(pricing.bw),
+                          color: String(pricing.color),
+                          glossy: String(pricing.glossy)
+                        })
+                      }
+                      className="px-3 py-1.5 rounded-full border border-gray-200 dark:border-white/20 bg-white/80 dark:bg-white/5 text-xs"
+                    >
+                      Reset
+                    </button>
+                  </div>
+
+                  <div className="mt-5 space-y-4">
+                    {PRINT_TYPE_KEYS.map((key) => (
+                      <label key={key} className="block text-sm">
+                        <span className="text-gray-600 dark:text-gray-300">{PRINT_TYPE_CONTENT[key].title}</span>
+                        <div className="mt-2 flex items-center rounded-2xl border border-gray-200 dark:border-white/20 bg-white/80 dark:bg-black/20 px-4">
+                          <span className="text-sm text-gray-500 dark:text-gray-400">₹</span>
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={pricingForm[key]}
+                            onChange={(event) =>
+                              setPricingForm((prev) => ({
+                                ...prev,
+                                [key]: event.target.value
+                              }))
+                            }
+                            className="w-full bg-transparent px-3 py-3 outline-none"
+                          />
+                          <span className="text-xs text-gray-500 dark:text-gray-400">/ page</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  <p className="mt-4 text-xs leading-6 text-gray-500 dark:text-gray-400">
+                    Paid orders stay untouched. Unpaid order calculations use the latest rate whenever they are recalculated.
+                  </p>
+
+                  <button
+                    onClick={savePricing}
+                    disabled={busyAction === "save-pricing"}
+                    className="mt-5 w-full rounded-2xl bg-gradient-to-r from-indigo-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {busyAction === "save-pricing" ? "Saving..." : "Save Pricing"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {activeTab === "payments" ? (
             <div className="space-y-4">
               <div className="grid lg:grid-cols-4 gap-3">
@@ -2438,6 +2609,17 @@ export default function AdminPortalPage() {
                 >
                   <p className="font-medium">Supplier Approval Desk</p>
                   <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">Jump to pending supplier approvals</p>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("pricing")
+                    setShowControlHub(false)
+                  }}
+                  className="text-left rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 px-4 py-3 hover:bg-gray-100 dark:hover:bg-white/10 transition"
+                >
+                  <p className="font-medium">Pricing Controls</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">Adjust public and operational per-page rates</p>
                 </button>
 
                 <button

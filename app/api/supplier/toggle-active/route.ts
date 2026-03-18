@@ -37,7 +37,7 @@ message:"Unauthorized UID"
 const supplier = await Supplier.findOneAndUpdate(
 {firebaseUID:body.firebaseUID},
 {active:body.active},
-{new:true}
+{returnDocument:"after"}
 )
 
 if(!supplier){

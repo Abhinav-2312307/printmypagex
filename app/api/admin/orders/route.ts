@@ -9,6 +9,8 @@ import {
   sendOrderCancelledNotification,
   sendOrderStatusNotification
 } from "@/lib/order-email"
+import { calculatePrintPrice } from "@/lib/print-pricing"
+import { getPrintPricing } from "@/lib/print-pricing-store"
 
 type OrderDoc = {
   _id: string
@@ -53,12 +55,6 @@ function parseNumber(value: unknown) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return null
   return parsed
-}
-
-function getPricePerPage(printType: unknown) {
-  if (printType === "color") return 5
-  if (printType === "glossy") return 15
-  return 2
 }
 
 async function loadUsersAndSuppliers(orders: OrderDoc[]) {
@@ -225,8 +221,8 @@ export async function PATCH(req: Request) {
       nextPages = parsedPages
     }
 
-    const pricePerPage = getPricePerPage(order.printType)
-    const baseAmount = round2(nextPages * pricePerPage)
+    const pricing = await getPrintPricing()
+    const baseAmount = calculatePrintPrice(nextPages, order.printType, pricing)
 
     let nextAmount = Number(order.finalPrice ?? order.estimatedPrice ?? baseAmount)
     let nextDiscountPercent = Number(order.discountPercent || 0)

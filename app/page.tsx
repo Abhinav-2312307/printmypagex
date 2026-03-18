@@ -6,7 +6,14 @@ import HeroBackground from "@/components/HeroBackground"
 import Link from "next/link"
 import CursorDepth from "@/components/CursorDepth"
 import CurrentYear from "@/components/CurrentYear"
-export default function Home(){
+import { getPricingPlans } from "@/lib/print-pricing"
+import { getPrintPricing } from "@/lib/print-pricing-store"
+
+export const dynamic = "force-dynamic"
+
+export default async function Home(){
+const pricing = await getPrintPricing()
+const pricingPlans = getPricingPlans(pricing)
 
 return(
 
@@ -126,11 +133,7 @@ Pricing
 
 <div className="flex flex-wrap justify-center gap-6 md:gap-10">
 
-{[
-{type:"Black & White",price:"₹2/page"},
-{type:"Color",price:"₹5/page"},
-{type:"Glossy",price:"₹15/page"}
-].map((item,i)=>(
+{pricingPlans.map((item,i)=>(
 
 <div
 key={i}
@@ -138,11 +141,11 @@ className="w-full max-w-[16rem] rounded-3xl border border-gray-200 bg-white/60 p
 >
 
 <h3 className="text-xl font-semibold mb-3">
-{item.type}
+{item.title}
 </h3>
 
 <p className="text-4xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-{item.price}
+₹{item.price}/page
 </p>
 
 </div>

@@ -5,6 +5,8 @@ import { pusherServer } from "@/lib/pusher-server"
 import { sendAwaitingPaymentNotification } from "@/lib/order-email"
 import { authenticateSupplierRequest } from "@/lib/supplier-auth"
 import { applyOrderLifecycleRules } from "@/lib/order-lifecycle"
+import { calculatePrintPrice } from "@/lib/print-pricing"
+import { getPrintPricing } from "@/lib/print-pricing-store"
 
 export const runtime = "nodejs"
 
@@ -95,12 +97,8 @@ export async function POST(req: Request){
       )
     }
 
-    let pricePerPage = 2
-
-    if(order.printType === "color") pricePerPage = 5
-    if(order.printType === "glossy") pricePerPage = 15
-
-    const finalPrice = verifiedPages * pricePerPage
+    const pricing = await getPrintPricing()
+    const finalPrice = calculatePrintPrice(verifiedPages, order.printType, pricing)
 
     if(!order.supplierUID){
       order.supplierUID = supplierUID
