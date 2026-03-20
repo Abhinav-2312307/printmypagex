@@ -4,7 +4,14 @@ import Supplier from "@/models/Supplier"
 import Order from "@/models/Order"
 import SupplierPayoutRequest from "@/models/SupplierPayoutRequest"
 import { authenticateAdminRequest } from "@/lib/admin-auth"
-import { GST_ON_FEE_RATE, RAZORPAY_FEE_RATE } from "@/lib/supplier-wallet"
+import {
+  createEmptyRevenueBreakdown,
+  addRevenueBreakdowns,
+  calculateRevenueBreakdownFromGross,
+  getOrderCollectedAmount,
+  roundCurrency,
+  type RevenueBreakdown
+} from "@/lib/revenue"
 
 type SupplierDoc = {
   _id: string
@@ -12,8 +19,10 @@ type SupplierDoc = {
   [key: string]: unknown
 }
 
-function round2(value: number) {
-  return Math.round(value * 100) / 100
+type DeliveredOrderDoc = {
+  supplierUID?: string | null
+  finalPrice?: number | null
+  estimatedPrice?: number | null
 }
 
 export async function GET(req: Request){
@@ -26,33 +35,14 @@ export async function GET(req: Request){
     .sort({ createdAt: -1 })
     .lean()) as SupplierDoc[]
 
-  const [deliveredStats, orderStats, payoutStats] = await Promise.all([
-    Order.aggregate<{
-      _id: string
-      grossDeliveredRevenue: number
-    }>([
-      {
-        $match: {
-          supplierUID: { $ne: null },
-          status: "delivered",
-          paymentStatus: "paid"
-        }
-      },
-      {
-        $group: {
-          _id: "$supplierUID",
-          grossDeliveredRevenue: {
-            $sum: {
-              $cond: [
-                { $ifNull: ["$finalPrice", false] },
-                "$finalPrice",
-                "$estimatedPrice"
-              ]
-            }
-          }
-        }
-      }
-    ]),
+  const [deliveredOrders, orderStats, payoutStats] = await Promise.all([
+    Order.find({
+      supplierUID: { $ne: null },
+      status: "delivered",
+      paymentStatus: "paid"
+    })
+      .select("supplierUID finalPrice estimatedPrice")
+      .lean<DeliveredOrderDoc[]>(),
     Order.aggregate<{
       _id: string
       ordersHandled: number
@@ -91,9 +81,15 @@ export async function GET(req: Request){
     ])
   ])
 
-  const deliveredMap = new Map<string, number>()
-  deliveredStats.forEach((stat) => {
-    deliveredMap.set(String(stat._id), round2(stat.grossDeliveredRevenue || 0))
+  const deliveredMap = new Map<string, RevenueBreakdown>()
+  deliveredOrders.forEach((order) => {
+    const supplierUID = String(order.supplierUID || "")
+    if (!supplierUID) return
+
+    const current = deliveredMap.get(supplierUID) || createEmptyRevenueBreakdown()
+    const next = calculateRevenueBreakdownFromGross(getOrderCollectedAmount(order))
+
+    deliveredMap.set(supplierUID, addRevenueBreakdowns(current, next))
   })
 
   const orderMap = new Map<string, { ordersHandled: number; paidOrders: number }>()
@@ -110,11 +106,11 @@ export async function GET(req: Request){
     const current = payoutMap.get(supplierUID) || { approved: 0, pending: 0 }
 
     if (stat._id.status === "approved") {
-      current.approved = round2(current.approved + (stat.total || 0))
+      current.approved = roundCurrency(current.approved + (stat.total || 0))
     }
 
     if (stat._id.status === "pending") {
-      current.pending = round2(current.pending + (stat.total || 0))
+      current.pending = roundCurrency(current.pending + (stat.total || 0))
     }
 
     payoutMap.set(supplierUID, current)
@@ -122,14 +118,15 @@ export async function GET(req: Request){
 
   const rows = suppliers.map((supplier) => {
     const supplierUID = String(supplier.firebaseUID || "")
-    const grossDeliveredRevenue = deliveredMap.get(supplierUID) || 0
-    const razorpayFees = round2(grossDeliveredRevenue * RAZORPAY_FEE_RATE)
-    const gstOnFees = round2(razorpayFees * GST_ON_FEE_RATE)
-    const netRevenue = round2(grossDeliveredRevenue - razorpayFees - gstOnFees)
+    const deliveredRevenue = deliveredMap.get(supplierUID) || createEmptyRevenueBreakdown()
+    const grossDeliveredRevenue = deliveredRevenue.grossRevenue
+    const razorpayFees = deliveredRevenue.razorpayFees
+    const gstOnFees = deliveredRevenue.gstOnFees
+    const netRevenue = deliveredRevenue.netRevenue
 
     const payout = payoutMap.get(supplierUID) || { approved: 0, pending: 0 }
-    const walletBalance = round2(Math.max(0, netRevenue - payout.approved))
-    const availableToClaim = round2(Math.max(0, walletBalance - payout.pending))
+    const walletBalance = roundCurrency(Math.max(0, netRevenue - payout.approved))
+    const availableToClaim = roundCurrency(Math.max(0, walletBalance - payout.pending))
 
     const order = orderMap.get(supplierUID) || { ordersHandled: 0, paidOrders: 0 }
 

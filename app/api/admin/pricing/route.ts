@@ -5,6 +5,7 @@ import {
   type PrintType
 } from "@/lib/print-pricing"
 import { getPrintPricing, savePrintPricing } from "@/lib/print-pricing-store"
+import { recordActivity } from "@/lib/activity-log"
 
 export const runtime = "nodejs"
 
@@ -55,6 +56,20 @@ export async function PUT(req: Request) {
     }
 
     const prices = await savePrintPricing(pricing)
+
+    await recordActivity({
+      actorType: "admin",
+      actorUID: auth.uid,
+      actorEmail: auth.email,
+      action: "pricing.updated",
+      entityType: "pricing",
+      entityId: "default",
+      level: "info",
+      message: "Admin updated print pricing",
+      metadata: {
+        prices
+      }
+    })
 
     return NextResponse.json({
       success: true,

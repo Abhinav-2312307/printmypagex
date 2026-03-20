@@ -3,17 +3,140 @@ import SmoothScroll from "@/components/SmoothScroll"
 import FeatureCard from "@/components/FeatureCard"
 import OrderFlow from "@/components/OrderFlow"
 import HeroBackground from "@/components/HeroBackground"
+import FeedbackLoopShowcase from "@/components/FeedbackLoopShowcase"
 import Link from "next/link"
 import CursorDepth from "@/components/CursorDepth"
 import CurrentYear from "@/components/CurrentYear"
-import { getPricingPlans } from "@/lib/print-pricing"
-import { getPrintPricing } from "@/lib/print-pricing-store"
+import { FEEDBACK_ASPECTS, type FeedbackAspectKey } from "@/lib/feedback"
+import { connectDB } from "@/lib/mongodb"
+import Feedback from "@/models/Feedback"
+import { getPlatformSettings } from "@/lib/platform-settings"
 
 export const dynamic = "force-dynamic"
 
+type LandingFeedbackRecord = {
+  message?: string
+  overallRating?: number
+  uiRating?: number
+  easeOfUseRating?: number
+  workflowRating?: number
+  effectivenessRating?: number
+  performanceRating?: number
+  stabilityRating?: number
+}
+
+const FEEDBACK_HIGHLIGHT_LABELS: Record<FeedbackAspectKey, string> = {
+  uiRating: "Polished visual feel",
+  easeOfUseRating: "Easy to use",
+  workflowRating: "Smooth workflow",
+  effectivenessRating: "Gets work done",
+  performanceRating: "Fast experience",
+  stabilityRating: "Feels stable"
+}
+
+function createFeedbackSnippet(message: string) {
+  const normalized = message.replace(/\s+/g, " ").trim()
+
+  if (!normalized) return ""
+
+  const firstSentence = normalized.split(/(?<=[.!?])\s+/)[0] || normalized
+  const compact = firstSentence.replace(/^["'`]+|["'`]+$/g, "")
+
+  if (compact.length <= 110) return compact
+
+  return `${compact.slice(0, 107).trimEnd()}...`
+}
+
+async function getFeedbackShowcaseData() {
+  await connectDB()
+
+  const [feedbackRows, summaryRows] = await Promise.all([
+    Feedback.find({})
+      .sort({ createdAt: -1 })
+      .limit(16)
+      .select("message overallRating")
+      .lean<LandingFeedbackRecord[]>(),
+    Feedback.aggregate<{
+      _id: null
+      total: number
+      averageRating: number
+      uiRating: number
+      easeOfUseRating: number
+      workflowRating: number
+      effectivenessRating: number
+      performanceRating: number
+      stabilityRating: number
+    }>([
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          averageRating: { $avg: "$overallRating" },
+          uiRating: { $avg: "$uiRating" },
+          easeOfUseRating: { $avg: "$easeOfUseRating" },
+          workflowRating: { $avg: "$workflowRating" },
+          effectivenessRating: { $avg: "$effectivenessRating" },
+          performanceRating: { $avg: "$performanceRating" },
+          stabilityRating: { $avg: "$stabilityRating" }
+        }
+      }
+    ])
+  ])
+
+  const summary = summaryRows[0]
+
+  if (!summary || summary.total < 1) {
+    return {
+      averageRating: 5,
+      feedbackCount: 0,
+      topHighlights: ["Campus ready", "Clean workflow", "Fast feel"],
+      items: [
+        { quote: "Early visitors are starting to share how the flow feels in real use.", rating: 5 },
+        { quote: "This space will turn live feedback into a moving wall of short campus reactions.", rating: 5 },
+        { quote: "Once more responses arrive, the landing page will update itself with real quotes.", rating: 5 }
+      ]
+    }
+  }
+
+  const topHighlights = FEEDBACK_ASPECTS.map((aspect) => ({
+    key: aspect.key,
+    value: Number(summary[aspect.key] || 0)
+  }))
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 3)
+    .map((aspect) => FEEDBACK_HIGHLIGHT_LABELS[aspect.key])
+
+  const seen = new Set<string>()
+  const items = feedbackRows
+    .map((item) => ({
+      quote: createFeedbackSnippet(String(item.message || "")),
+      rating: Number(item.overallRating || 0)
+    }))
+    .filter((item) => item.quote && item.rating > 0)
+    .filter((item) => {
+      if (seen.has(item.quote)) return false
+      seen.add(item.quote)
+      return true
+    })
+    .slice(0, 12)
+
+  return {
+    averageRating: Math.round(Number(summary.averageRating || 0) * 10) / 10,
+    feedbackCount: Number(summary.total || 0),
+    topHighlights,
+    items: items.length
+      ? items
+      : [
+          { quote: "Visitors are liking the overall experience and sharing strong early impressions.", rating: 5 }
+        ]
+  }
+}
+
 export default async function Home(){
-const pricing = await getPrintPricing()
-const pricingPlans = getPricingPlans(pricing)
+const [feedbackShowcase, platformSettings] = await Promise.all([
+  getFeedbackShowcaseData(),
+  getPlatformSettings()
+])
 
 return(
 
@@ -24,8 +147,8 @@ return(
 <Navbar
 navButtons={[
 {
-label:"Pricing",
-href:"/pricing",
+label:"Feedback",
+href:"/feedback",
 variant:"glass"
 },
 {
@@ -108,8 +231,8 @@ direction="bottom"
 />
 
 <FeatureCard
-title="Affordable Printing"
-desc="Transparent campus pricing."
+title="Campus Approved"
+desc="Real student feedback keeps the experience sharper every week."
 direction="right"
 />
 
@@ -123,38 +246,14 @@ direction="right"
 <OrderFlow/>
 
 
-{/* PRICING */}
-
-<section className="py-20 md:py-32">
-
-<h2 className="mb-12 text-center text-3xl font-bold md:mb-16 md:text-4xl">
-Pricing
-</h2>
-
-<div className="flex flex-wrap justify-center gap-6 md:gap-10">
-
-{pricingPlans.map((item,i)=>(
-
-<div
-key={i}
-className="w-full max-w-[16rem] rounded-3xl border border-gray-200 bg-white/60 p-7 text-center shadow-xl backdrop-blur-xl transition hover:scale-105 dark:border-white/20 dark:bg-white/5 sm:p-10 md:w-64"
->
-
-<h3 className="text-xl font-semibold mb-3">
-{item.title}
-</h3>
-
-<p className="text-4xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-₹{item.price}/page
-</p>
-
-</div>
-
-))}
-
-</div>
-
-</section>
+{platformSettings.landingFeedbackVisible ? (
+<FeedbackLoopShowcase
+averageRating={feedbackShowcase.averageRating}
+feedbackCount={feedbackShowcase.feedbackCount}
+topHighlights={feedbackShowcase.topHighlights}
+items={feedbackShowcase.items}
+/>
+) : null}
 
 
 {/* CTA */}

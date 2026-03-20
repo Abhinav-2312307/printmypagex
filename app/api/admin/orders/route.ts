@@ -11,6 +11,7 @@ import {
 } from "@/lib/order-email"
 import { calculatePrintPrice } from "@/lib/print-pricing"
 import { getPrintPricing } from "@/lib/print-pricing-store"
+import { recordActivity } from "@/lib/activity-log"
 
 type OrderDoc = {
   _id: string
@@ -352,6 +353,25 @@ export async function PATCH(req: Request) {
   })
 
   await order.save()
+
+  await recordActivity({
+    actorType: "admin",
+    actorUID: auth.uid,
+    actorEmail: auth.email,
+    action: "order.admin_updated",
+    entityType: "order",
+    entityId: String(order._id),
+    level: statusProvided && nextStatus === "cancelled" ? "warning" : "info",
+    message: `Admin updated order ${String(order._id).slice(-8)}${changes.length ? `: ${changes.join(" | ")}` : ""}`,
+    metadata: {
+      orderId: String(order._id),
+      userUID: String(order.userUID),
+      supplierUID: String(order.supplierUID || ""),
+      previousStatus,
+      nextStatus: statusProvided ? nextStatus : previousStatus,
+      note
+    }
+  })
 
   try {
     await pusherServer.trigger(`private-user-${order.userUID}`, "order-updated", order)

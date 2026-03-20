@@ -56,3 +56,58 @@ transition: background-color 0.2s ease, color 0.2s ease;
 .liquid-float {
   animation: liquid-float 8s ease-in-out infinite;
 }
+
+@keyframes feedback-marquee {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.feedback-marquee {
+  display: flex;
+  width: max-content;
+  animation: feedback-marquee 32s linear infinite;
+  will-change: transform;
+}
+
+.feedback-marquee-shell {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, black 8%, black 92%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, black 8%, black 92%, transparent 100%);
+}
+
+.feedback-marquee-shell:hover .feedback-marquee {
+  animation-play-state: paused;
+}
+
+.feedback-marquee-reverse {
+  animation-direction: reverse;
+  animation-duration: 36s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feedback-marquee,
+  .feedback-marquee-reverse {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .feedback-marquee-shell {
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, black 4%, black 96%, transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, black 4%, black 96%, transparent 100%);
+  }
+
+  .feedback-marquee {
+    animation-duration: 26s;
+  }
+
+  .feedback-marquee-reverse {
+    animation-duration: 30s;
+  }
+}

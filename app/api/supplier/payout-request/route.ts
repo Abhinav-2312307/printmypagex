@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { authenticateSupplierRequest } from "@/lib/supplier-auth"
 import SupplierPayoutRequest from "@/models/SupplierPayoutRequest"
 import { getSupplierWalletSummary } from "@/lib/supplier-wallet"
+import { recordActivity } from "@/lib/activity-log"
 
 export async function POST(req: Request) {
   const auth = await authenticateSupplierRequest(req)
@@ -35,6 +36,22 @@ export async function POST(req: Request) {
     supplierUID: auth.uid,
     amount: normalizedAmount,
     status: "pending"
+  })
+
+  await recordActivity({
+    actorType: "supplier",
+    actorUID: auth.uid,
+    actorEmail: auth.email,
+    action: "payout.requested",
+    entityType: "payout_request",
+    entityId: String(request._id),
+    level: "info",
+    message: `Supplier requested payout of INR ${normalizedAmount.toFixed(2)}`,
+    metadata: {
+      requestId: String(request._id),
+      supplierUID: auth.uid,
+      amount: normalizedAmount
+    }
   })
 
   return NextResponse.json({

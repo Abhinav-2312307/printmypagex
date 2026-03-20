@@ -6,6 +6,7 @@ import {
   enforceSubmissionGuards,
   getRequestDeviceKey
 } from "@/lib/submission-protection"
+import { recordActivity } from "@/lib/activity-log"
 
 export const runtime = "nodejs"
 
@@ -171,6 +172,19 @@ export async function POST(req: Request) {
         <p><strong>Message:</strong></p>
         <p style="white-space: pre-wrap;">${escapeHtml(message)}</p>
       `
+    })
+
+    await recordActivity({
+      actorType: "public",
+      action: "contact.submitted",
+      entityType: "contact",
+      entityId: email,
+      level: "info",
+      message: `A public contact form was submitted by ${email}`,
+      metadata: {
+        name,
+        email
+      }
     })
 
     return NextResponse.json({

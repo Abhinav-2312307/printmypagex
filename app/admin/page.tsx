@@ -38,6 +38,7 @@ import HeroBackground from "@/components/HeroBackground"
 import CursorDepth from "@/components/CursorDepth"
 import FeedbackPanel, { type AdminFeedback } from "@/components/admin/FeedbackPanel"
 import FaqManager from "@/components/admin/FaqManager"
+import StatusToggle from "@/components/admin/StatusToggle"
 import {
   DEFAULT_PRINT_PRICING,
   PRINT_TYPE_CONTENT,
@@ -51,6 +52,11 @@ import {
   defaultFaqContentSnapshot,
   type FAQContentSnapshot
 } from "@/lib/faq-content"
+import {
+  calculateRevenueBreakdownFromGross,
+  getOrderCollectedAmount,
+  roundCurrency
+} from "@/lib/revenue"
 
 type Tab =
   | "overview"
@@ -62,6 +68,7 @@ type Tab =
   | "payouts"
   | "feedback"
   | "faqs"
+  | "logs"
   | "danger"
 
 type OverviewResponse = {
@@ -185,6 +192,25 @@ type AdminPayoutRequest = {
   createdAt: string
   processedAt?: string | null
   supplier?: { name?: string; email?: string; phone?: string } | null
+}
+
+type AdminActivityLog = {
+  _id?: string
+  actorType?: string
+  actorUID?: string
+  actorEmail?: string
+  action: string
+  entityType: string
+  entityId?: string
+  level?: "info" | "success" | "warning" | "error" | string
+  message: string
+  metadata?: Record<string, unknown>
+  createdAt: string
+}
+
+type PlatformSettings = {
+  landingFeedbackVisible: boolean
+  updatedAt?: string | null
 }
 
 type ClearDbResponse = {
@@ -318,6 +344,30 @@ function getNameInitial(name?: string, email?: string) {
   return String(name || email || "U").charAt(0).toUpperCase()
 }
 
+function getActivityLevelBadge(level: string | null | undefined) {
+  const normalized = String(level || "info").toLowerCase()
+
+  if (normalized === "success") {
+    return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30"
+  }
+
+  if (normalized === "warning") {
+    return "bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30"
+  }
+
+  if (normalized === "error") {
+    return "bg-rose-500/15 text-rose-600 dark:text-rose-300 border border-rose-500/30"
+  }
+
+  return "bg-cyan-500/15 text-cyan-700 dark:text-cyan-200 border border-cyan-500/30"
+}
+
+function formatActivityActor(log: Pick<AdminActivityLog, "actorType" | "actorEmail" | "actorUID">) {
+  if (log.actorEmail) return log.actorEmail
+  if (log.actorUID) return log.actorUID
+  return String(log.actorType || "system").toUpperCase()
+}
+
 function getOrderStatusOptions(paymentStatus: string, currentStatus?: string) {
   const options =
     paymentStatus === "paid"
@@ -349,6 +399,11 @@ export default function AdminPortalPage() {
   const [payments, setPayments] = useState<PaymentLog[]>([])
   const [payoutRequests, setPayoutRequests] = useState<AdminPayoutRequest[]>([])
   const [feedbacks, setFeedbacks] = useState<AdminFeedback[]>([])
+  const [activityLogs, setActivityLogs] = useState<AdminActivityLog[]>([])
+  const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({
+    landingFeedbackVisible: true,
+    updatedAt: null
+  })
   const [faqContent, setFaqContent] = useState<FAQContentSnapshot>(defaultFaqContentSnapshot)
   const [pricing, setPricing] = useState<PrintPricing>(DEFAULT_PRINT_PRICING)
   const [pricingForm, setPricingForm] = useState<Record<PrintType, string>>({
@@ -389,6 +444,8 @@ export default function AdminPortalPage() {
   const [payoutQuery, setPayoutQuery] = useState("")
   const [payoutStatusFilter, setPayoutStatusFilter] = useState<"ALL" | "pending" | "approved" | "rejected">("ALL")
   const [payoutNotes, setPayoutNotes] = useState<Record<string, string>>({})
+  const [logQuery, setLogQuery] = useState("")
+  const [logLevelFilter, setLogLevelFilter] = useState<"ALL" | "info" | "success" | "warning" | "error">("ALL")
 
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [selectedSupplier, setSelectedSupplier] = useState<AdminSupplier | null>(null)
@@ -406,6 +463,8 @@ export default function AdminPortalPage() {
   const [ordersWorkspace, setOrdersWorkspace] = useState<OrdersWorkspace | null>(null)
   const [workspaceFilter, setWorkspaceFilter] = useState<WorkspaceFilter>("all")
   const [workspaceOrderDetail, setWorkspaceOrderDetail] = useState<AdminOrder | null>(null)
+
+  const isBusyAction = useCallback((...keys: string[]) => keys.includes(busyAction), [busyAction])
 
   const adminFetch = useCallback(async <T,>(url: string, init?: RequestInit): Promise<T> => {
     const currentUser = auth.currentUser
@@ -447,7 +506,9 @@ export default function AdminPortalPage() {
       paymentsRes,
       payoutsRes,
       feedbacksRes,
-      faqsRes
+      faqsRes,
+      logsRes,
+      settingsRes
     ] = await Promise.all([
       adminFetch<OverviewResponse>("/api/admin/overview"),
       adminFetch<{ users: AdminUser[] }>("/api/admin/users"),
@@ -457,7 +518,9 @@ export default function AdminPortalPage() {
       adminFetch<{ payments: PaymentLog[] }>("/api/admin/payments"),
       adminFetch<{ requests: AdminPayoutRequest[] }>("/api/admin/payout-requests"),
       adminFetch<{ feedbacks: AdminFeedback[] }>("/api/admin/feedback"),
-      adminFetch<{ content: FAQContentSnapshot }>("/api/admin/faqs")
+      adminFetch<{ content: FAQContentSnapshot }>("/api/admin/faqs"),
+      adminFetch<{ logs: AdminActivityLog[] }>("/api/admin/logs?limit=300"),
+      adminFetch<{ settings: PlatformSettings }>("/api/admin/platform-settings")
     ])
 
     setOverview(overviewRes)
@@ -474,6 +537,8 @@ export default function AdminPortalPage() {
     setPayments(paymentsRes.payments || [])
     setPayoutRequests(payoutsRes.requests || [])
     setFeedbacks(feedbacksRes.feedbacks || [])
+    setActivityLogs(logsRes.logs || [])
+    setPlatformSettings(settingsRes.settings || { landingFeedbackVisible: true, updatedAt: null })
     setFaqContent(faqsRes.content || defaultFaqContentSnapshot)
     setLastSyncedAt(new Date())
   }, [adminFetch])
@@ -595,6 +660,29 @@ export default function AdminPortalPage() {
     }
   }
 
+  const setLandingFeedbackVisible = async (nextVisible: boolean) => {
+    try {
+      setBusyAction("toggle-landing-feedback")
+      setMessage("")
+      setError("")
+
+      const response = await adminFetch<{ settings: PlatformSettings; message?: string }>("/api/admin/platform-settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          landingFeedbackVisible: nextVisible
+        })
+      })
+
+      setPlatformSettings(response.settings || { landingFeedbackVisible: nextVisible, updatedAt: null })
+      await loadAll()
+      setMessage(response.message || `Landing feedback showcase turned ${nextVisible ? "on" : "off"}`)
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError))
+    } finally {
+      setBusyAction("")
+    }
+  }
+
   const savePricing = async () => {
     const nextPricing = {} as PrintPricing
 
@@ -642,10 +730,21 @@ export default function AdminPortalPage() {
     try {
       setBusyAction(`${action}-${firebaseUID}`)
       setError("")
-      await adminFetch<{ success: boolean }>("/api/admin/user-action", {
+      const response = await adminFetch<{ success: boolean; user?: AdminUser }>("/api/admin/user-action", {
         method: "POST",
         body: JSON.stringify({ firebaseUID, action, role })
       })
+
+      if (response.user) {
+        setSelectedUser((prev) =>
+          prev?.firebaseUID === firebaseUID
+            ? {
+                ...prev,
+                ...response.user
+              }
+            : prev
+        )
+      }
 
       await loadAll()
       setMessage("User updated successfully")
@@ -660,10 +759,22 @@ export default function AdminPortalPage() {
     try {
       setBusyAction(`${action}-${firebaseUID}`)
       setError("")
-      await adminFetch<{ success: boolean }>("/api/admin/supplier-action", {
+      const response = await adminFetch<{ success: boolean; supplier?: AdminSupplier }>("/api/admin/supplier-action", {
         method: "POST",
         body: JSON.stringify({ firebaseUID, action })
       })
+
+      if (response.supplier) {
+        setSelectedSupplier((prev) =>
+          prev?.firebaseUID === firebaseUID
+            ? {
+                ...prev,
+                ...response.supplier
+              }
+            : prev
+        )
+      }
+
       await loadAll()
       setMessage("Supplier updated successfully")
     } catch (caughtError) {
@@ -1138,6 +1249,24 @@ export default function AdminPortalPage() {
     })
   }, [payoutQuery, payoutRequests, payoutStatusFilter])
 
+  const filteredActivityLogs = useMemo(() => {
+    const query = logQuery.trim().toLowerCase()
+
+    return activityLogs.filter((log) => {
+      if (logLevelFilter !== "ALL" && String(log.level || "info") !== logLevelFilter) return false
+
+      return hasQueryMatch(query, [
+        log.message,
+        log.action,
+        log.entityType,
+        log.entityId,
+        log.actorEmail,
+        log.actorUID,
+        log.actorType
+      ])
+    })
+  }, [activityLogs, logLevelFilter, logQuery])
+
   const userPanelMetrics = useMemo(() => {
     if (!selectedUser?.firebaseUID) return null
 
@@ -1167,10 +1296,15 @@ export default function AdminPortalPage() {
     if (!selectedSupplier?.firebaseUID) return null
 
     const relatedOrders = supplierOrdersMap.get(String(selectedSupplier.firebaseUID)) || []
-    const revenue = relatedOrders.reduce(
-      (sum, order) => sum + Number(order.finalPrice ?? order.estimatedPrice ?? 0),
-      0
-    )
+    const revenue = relatedOrders
+      .filter((order) => order.status === "delivered" && order.paymentStatus === "paid")
+      .reduce(
+        (sum, order) =>
+          roundCurrency(
+            sum + calculateRevenueBreakdownFromGross(getOrderCollectedAmount(order)).netRevenue
+          ),
+        0
+      )
 
     return {
       orderCount: relatedOrders.length,
@@ -1273,6 +1407,20 @@ export default function AdminPortalPage() {
   }, [overview, payoutRequests, pendingPayoutAmount, staleOrders.length])
 
   const recentActivity = useMemo(() => {
+    if (activityLogs.length) {
+      return activityLogs.slice(0, 8).map((log, index) => ({
+        id: log._id || `${log.action}-${index}`,
+        title: log.message,
+        subtitle: `${formatActivityActor(log)} • ${formatDateTime(log.createdAt)}`,
+        level:
+          log.level === "success"
+            ? "good"
+            : log.level === "warning" || log.level === "error"
+              ? "risk"
+              : "neutral"
+      }))
+    }
+
     const items = [
       ...orders.slice(0, 6).map((order) => ({
         id: `order-${order._id}`,
@@ -1289,7 +1437,7 @@ export default function AdminPortalPage() {
     ]
 
     return items.slice(0, 8)
-  }, [orders, payments])
+  }, [activityLogs, orders, payments])
 
   const tabs: Array<{ value: Tab; label: string }> = [
     { value: "overview", label: "Overview" },
@@ -1301,6 +1449,7 @@ export default function AdminPortalPage() {
     { value: "payouts", label: "Payouts" },
     { value: "feedback", label: "Feedback" },
     { value: "faqs", label: "FAQs" },
+    { value: "logs", label: "Logs" },
     { value: "danger", label: "Danger" }
   ]
 
@@ -1794,7 +1943,7 @@ export default function AdminPortalPage() {
                         <td className="p-3">{formatDateTime(user.createdAt || "")}</td>
                         <td className="p-3">
                           {user.firebaseUID ? (
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-3">
                               <button
                                 onClick={() => setSelectedUser(user)}
                                 className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-white/20 bg-white/80 dark:bg-white/5 flex items-center gap-1"
@@ -1803,21 +1952,27 @@ export default function AdminPortalPage() {
                                 View
                               </button>
 
-                              <button
-                                disabled={busyAction === `activate-${user.firebaseUID}`}
-                                onClick={() => runUserAction(user.firebaseUID!, "activate")}
-                                className="px-2.5 py-1 rounded-lg bg-emerald-500/80 text-white"
-                              >
-                                Unsuspend
-                              </button>
+                              <StatusToggle
+                                title="Approval"
+                                checked={Boolean(user.approved)}
+                                checkedLabel="Approved"
+                                uncheckedLabel="Pending"
+                                busy={isBusyAction(`approve-${user.firebaseUID}`, `disapprove-${user.firebaseUID}`)}
+                                onChange={(nextChecked) =>
+                                  runUserAction(user.firebaseUID!, nextChecked ? "approve" : "disapprove")
+                                }
+                              />
 
-                              <button
-                                disabled={busyAction === `deactivate-${user.firebaseUID}`}
-                                onClick={() => runUserAction(user.firebaseUID!, "deactivate")}
-                                className="px-2.5 py-1 rounded-lg bg-amber-500/80 text-white"
-                              >
-                                Suspend
-                              </button>
+                              <StatusToggle
+                                title="Suspension"
+                                checked={user.active === false}
+                                checkedLabel="Suspended"
+                                uncheckedLabel="Live"
+                                busy={isBusyAction(`activate-${user.firebaseUID}`, `deactivate-${user.firebaseUID}`)}
+                                onChange={(nextChecked) =>
+                                  runUserAction(user.firebaseUID!, nextChecked ? "deactivate" : "activate")
+                                }
+                              />
 
                               <select
                                 value={user.role}
@@ -1942,7 +2097,7 @@ export default function AdminPortalPage() {
                         <td className="p-3">{formatCurrency(supplier.availableToClaim)}</td>
                         <td className="p-3">
                           {supplier.firebaseUID ? (
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-3">
                               <button
                                 onClick={() => setSelectedSupplier(supplier)}
                                 className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-white/20 bg-white/80 dark:bg-white/5 flex items-center gap-1"
@@ -1951,29 +2106,28 @@ export default function AdminPortalPage() {
                                 View
                               </button>
 
-                              <button
-                                disabled={busyAction === `approve-${supplier.firebaseUID}`}
-                                onClick={() => runSupplierAction(supplier.firebaseUID!, "approve")}
-                                className="px-2.5 py-1 rounded-lg bg-cyan-500/80 text-white"
-                              >
-                                Approve
-                              </button>
+                              <StatusToggle
+                                title="Approval"
+                                checked={Boolean(supplier.approved)}
+                                checkedLabel="Approved"
+                                uncheckedLabel="Unapproved"
+                                busy={isBusyAction(`approve-${supplier.firebaseUID}`, `disapprove-${supplier.firebaseUID}`)}
+                                onChange={(nextChecked) =>
+                                  runSupplierAction(supplier.firebaseUID!, nextChecked ? "approve" : "disapprove")
+                                }
+                              />
 
-                              <button
-                                disabled={busyAction === `deactivate-${supplier.firebaseUID}`}
-                                onClick={() => runSupplierAction(supplier.firebaseUID!, "deactivate")}
-                                className="px-2.5 py-1 rounded-lg bg-amber-500/80 text-white"
-                              >
-                                Inactivate
-                              </button>
-
-                              <button
-                                disabled={busyAction === `activate-${supplier.firebaseUID}`}
-                                onClick={() => runSupplierAction(supplier.firebaseUID!, "activate")}
-                                className="px-2.5 py-1 rounded-lg bg-emerald-500/80 text-white"
-                              >
-                                Activate
-                              </button>
+                              <StatusToggle
+                                title="Activity"
+                                checked={Boolean(supplier.active)}
+                                checkedLabel="Active"
+                                uncheckedLabel="Inactive"
+                                disabled={!supplier.approved}
+                                busy={isBusyAction(`activate-${supplier.firebaseUID}`, `deactivate-${supplier.firebaseUID}`)}
+                                onChange={(nextChecked) =>
+                                  runSupplierAction(supplier.firebaseUID!, nextChecked ? "activate" : "deactivate")
+                                }
+                              />
                             </div>
                           ) : (
                             "-"
@@ -2487,6 +2641,102 @@ export default function AdminPortalPage() {
             />
           ) : null}
 
+          {activeTab === "logs" ? (
+            <div className="space-y-4">
+              <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4 flex flex-wrap gap-3 items-center">
+                <div className="relative flex-1 min-w-[220px]">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    value={logQuery}
+                    onChange={(event) => setLogQuery(event.target.value)}
+                    placeholder="Search logs by message, actor, entity id, action..."
+                    className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/80 dark:bg-black/30 border border-gray-200 dark:border-white/20"
+                  />
+                </div>
+
+                <select
+                  value={logLevelFilter}
+                  onChange={(event) =>
+                    setLogLevelFilter(event.target.value as "ALL" | "info" | "success" | "warning" | "error")
+                  }
+                  className="px-3 py-2.5 rounded-xl bg-white/80 dark:bg-black/30 border border-gray-200 dark:border-white/20"
+                >
+                  <option value="ALL">All Levels</option>
+                  <option value="info">Info</option>
+                  <option value="success">Success</option>
+                  <option value="warning">Warning</option>
+                  <option value="error">Error</option>
+                </select>
+
+                <button
+                  onClick={() =>
+                    downloadCsv(
+                      "admin-activity-logs.csv",
+                      filteredActivityLogs.map((log) => ({
+                        time: formatDateTime(log.createdAt),
+                        level: log.level || "info",
+                        actorType: log.actorType || "",
+                        actor: formatActivityActor(log),
+                        action: log.action,
+                        entityType: log.entityType,
+                        entityId: log.entityId || "",
+                        message: log.message
+                      }))
+                    )
+                  }
+                  className="px-3 py-2.5 rounded-xl border border-gray-200 dark:border-white/20 bg-white/80 dark:bg-white/5 flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Export
+                </button>
+              </div>
+
+              <div className="grid gap-3">
+                {filteredActivityLogs.length ? (
+                  filteredActivityLogs.map((log, index) => (
+                    <div
+                      key={log._id || `${log.action}-${index}`}
+                      className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4"
+                    >
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`px-2 py-1 rounded-full text-[11px] ${getActivityLevelBadge(log.level)}`}>
+                              {String(log.level || "info").toUpperCase()}
+                            </span>
+                            <span className="px-2 py-1 rounded-full text-[11px] border border-gray-200 dark:border-white/20 bg-white/80 dark:bg-white/5">
+                              {formatStatus(log.entityType)}
+                            </span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">{log.action}</span>
+                          </div>
+
+                          <p className="font-medium">{log.message}</p>
+
+                          <div className="flex flex-wrap gap-3 text-xs text-gray-600 dark:text-gray-300">
+                            <span>Actor: {formatActivityActor(log)}</span>
+                            <span>Time: {formatDateTime(log.createdAt)}</span>
+                            {log.entityId ? (
+                              <button
+                                onClick={() => copyText(log.entityId || "")}
+                                className="text-left hover:text-indigo-500 dark:hover:text-cyan-300"
+                              >
+                                Entity: {log.entityId}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-6 text-sm text-gray-600 dark:text-gray-300">
+                    No logs match the current filters.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
           {activeTab === "danger" ? (
             <div className="space-y-5">
               <div className="backdrop-blur-2xl bg-rose-500/10 border border-rose-500/40 rounded-3xl p-6 space-y-4">
@@ -2558,12 +2808,13 @@ export default function AdminPortalPage() {
             </div>
 
             <div className="p-5 space-y-5">
-              <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
+              <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-3">
                 {[
                   { label: "Auto Sync", value: autoRefresh ? "On (60s)" : "Off" },
                   { label: "Stale Orders", value: String(staleOrders.length) },
                   { label: "Pending Payouts", value: String(payoutRequests.filter((item) => item.status === "pending").length) },
-                  { label: "Inactive Accounts", value: String(inactiveUsers.length + inactiveSuppliers.length) }
+                  { label: "Inactive Accounts", value: String(inactiveUsers.length + inactiveSuppliers.length) },
+                  { label: "Landing Feedback", value: platformSettings.landingFeedbackVisible ? "Visible" : "Hidden" }
                 ].map((card) => (
                   <div
                     key={card.label}
@@ -2576,6 +2827,26 @@ export default function AdminPortalPage() {
               </div>
 
               <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+                <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 px-4 py-4 md:col-span-2 xl:col-span-3">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="font-medium">Landing Feedback Showcase</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                        Control whether the public feedback strip is visible on the landing page.
+                      </p>
+                    </div>
+
+                    <StatusToggle
+                      title="Visibility"
+                      checked={platformSettings.landingFeedbackVisible}
+                      checkedLabel="Visible"
+                      uncheckedLabel="Hidden"
+                      busy={busyAction === "toggle-landing-feedback"}
+                      onChange={setLandingFeedbackVisible}
+                    />
+                  </div>
+                </div>
+
                 <button
                   onClick={() => {
                     setActiveTab("orders")
@@ -2645,6 +2916,17 @@ export default function AdminPortalPage() {
                 >
                   <p className="font-medium">Run Full Sync</p>
                   <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">Refresh all admin datasets now</p>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("logs")
+                    setShowControlHub(false)
+                  }}
+                  className="text-left rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 px-4 py-3 hover:bg-gray-100 dark:hover:bg-white/10 transition"
+                >
+                  <p className="font-medium">Open Activity Logs</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">Inspect the latest platform events and admin actions</p>
                 </button>
 
                 <button
@@ -3027,27 +3309,26 @@ export default function AdminPortalPage() {
                     >
                       Order Stats Window
                     </button>
-                    <button
-                      onClick={() => runUserAction(selectedUser.firebaseUID!, "approve")}
-                      disabled={busyAction === `approve-${selectedUser.firebaseUID}`}
-                      className="px-3 py-2 rounded-xl bg-cyan-500/90 text-white text-sm"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => runUserAction(selectedUser.firebaseUID!, "activate")}
-                      disabled={busyAction === `activate-${selectedUser.firebaseUID}`}
-                      className="px-3 py-2 rounded-xl bg-emerald-500/90 text-white text-sm"
-                    >
-                      Activate
-                    </button>
-                    <button
-                      onClick={() => runUserAction(selectedUser.firebaseUID!, "deactivate")}
-                      disabled={busyAction === `deactivate-${selectedUser.firebaseUID}`}
-                      className="px-3 py-2 rounded-xl bg-amber-500/90 text-white text-sm"
-                    >
-                      Suspend
-                    </button>
+                    <StatusToggle
+                      title="Approval"
+                      checked={Boolean(selectedUser.approved)}
+                      checkedLabel="Approved"
+                      uncheckedLabel="Pending"
+                      busy={isBusyAction(`approve-${selectedUser.firebaseUID}`, `disapprove-${selectedUser.firebaseUID}`)}
+                      onChange={(nextChecked) =>
+                        runUserAction(selectedUser.firebaseUID!, nextChecked ? "approve" : "disapprove")
+                      }
+                    />
+                    <StatusToggle
+                      title="Suspension"
+                      checked={selectedUser.active === false}
+                      checkedLabel="Suspended"
+                      uncheckedLabel="Live"
+                      busy={isBusyAction(`activate-${selectedUser.firebaseUID}`, `deactivate-${selectedUser.firebaseUID}`)}
+                      onChange={(nextChecked) =>
+                        runUserAction(selectedUser.firebaseUID!, nextChecked ? "deactivate" : "activate")
+                      }
+                    />
                   </>
                 ) : null}
               </div>
@@ -3159,7 +3440,7 @@ export default function AdminPortalPage() {
                   <p className="font-semibold mt-1">{supplierPanelMetrics.cancelledCount}</p>
                 </div>
                 <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 p-3">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Order Revenue</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Net Revenue</p>
                   <p className="font-semibold mt-1">{formatCurrency(supplierPanelMetrics.revenue)}</p>
                 </div>
               </div>
@@ -3195,27 +3476,27 @@ export default function AdminPortalPage() {
                     >
                       Order Stats Window
                     </button>
-                    <button
-                      onClick={() => runSupplierAction(selectedSupplier.firebaseUID!, "approve")}
-                      disabled={busyAction === `approve-${selectedSupplier.firebaseUID}`}
-                      className="px-3 py-2 rounded-xl bg-cyan-500/90 text-white text-sm"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => runSupplierAction(selectedSupplier.firebaseUID!, "activate")}
-                      disabled={busyAction === `activate-${selectedSupplier.firebaseUID}`}
-                      className="px-3 py-2 rounded-xl bg-emerald-500/90 text-white text-sm"
-                    >
-                      Activate
-                    </button>
-                    <button
-                      onClick={() => runSupplierAction(selectedSupplier.firebaseUID!, "deactivate")}
-                      disabled={busyAction === `deactivate-${selectedSupplier.firebaseUID}`}
-                      className="px-3 py-2 rounded-xl bg-amber-500/90 text-white text-sm"
-                    >
-                      Inactivate
-                    </button>
+                    <StatusToggle
+                      title="Approval"
+                      checked={Boolean(selectedSupplier.approved)}
+                      checkedLabel="Approved"
+                      uncheckedLabel="Unapproved"
+                      busy={isBusyAction(`approve-${selectedSupplier.firebaseUID}`, `disapprove-${selectedSupplier.firebaseUID}`)}
+                      onChange={(nextChecked) =>
+                        runSupplierAction(selectedSupplier.firebaseUID!, nextChecked ? "approve" : "disapprove")
+                      }
+                    />
+                    <StatusToggle
+                      title="Activity"
+                      checked={Boolean(selectedSupplier.active)}
+                      checkedLabel="Active"
+                      uncheckedLabel="Inactive"
+                      disabled={!selectedSupplier.approved}
+                      busy={isBusyAction(`activate-${selectedSupplier.firebaseUID}`, `deactivate-${selectedSupplier.firebaseUID}`)}
+                      onChange={(nextChecked) =>
+                        runSupplierAction(selectedSupplier.firebaseUID!, nextChecked ? "activate" : "deactivate")
+                      }
+                    />
                   </>
                 ) : null}
               </div>

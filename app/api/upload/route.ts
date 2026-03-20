@@ -17,6 +17,7 @@ import {
   enforceSubmissionGuards,
   getRequestDeviceKey
 } from "@/lib/submission-protection"
+import { recordActivity } from "@/lib/activity-log"
 
 export const runtime = "nodejs"
 
@@ -494,11 +495,15 @@ export async function POST(req: Request) {
     })
 
     // Real-time broadcast
-    await pusherServer.trigger(
-      "orders",
-      "new-order",
-      order
-    )
+    try {
+      await pusherServer.trigger(
+        "orders",
+        "new-order",
+        order
+      )
+    } catch (pushError) {
+      console.error("PUSHER ORDER CREATE ERROR:", pushError)
+    }
 
     sendOrderCreatedNotifications(order).catch((emailError) => {
       console.error("ORDER_CREATED_EMAIL_ERROR:", emailError)
@@ -506,6 +511,26 @@ export async function POST(req: Request) {
     console.log("ORDER_EMAIL_DEBUG: Triggered create notifications", {
       orderId: String(order._id),
       requestType: order.requestType
+    })
+
+    await recordActivity({
+      actorType: "user",
+      actorUID: firebaseUID,
+      actorEmail: auth.email,
+      action: "order.created",
+      entityType: "order",
+      entityId: String(order._id),
+      level: "success",
+      message: `User created order ${String(order._id).slice(-8)}`,
+      metadata: {
+        orderId: String(order._id),
+        userUID: firebaseUID,
+        supplierUID: String(order.supplierUID || ""),
+        requestType: String(order.requestType || ""),
+        estimatedPrice: Number(order.estimatedPrice || 0),
+        pages: Number(order.pages || 0),
+        printType: String(order.printType || "")
+      }
     })
 
     return NextResponse.json({

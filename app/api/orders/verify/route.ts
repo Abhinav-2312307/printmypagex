@@ -7,6 +7,7 @@ import { authenticateSupplierRequest } from "@/lib/supplier-auth"
 import { applyOrderLifecycleRules } from "@/lib/order-lifecycle"
 import { calculatePrintPrice } from "@/lib/print-pricing"
 import { getPrintPricing } from "@/lib/print-pricing-store"
+import { recordActivity } from "@/lib/activity-log"
 
 export const runtime = "nodejs"
 
@@ -77,6 +78,16 @@ export async function POST(req: Request) {
       )
     }
 
+    if (!["pending", "accepted", "awaiting_payment"].includes(String(order.status || ""))) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Order cannot be verified from status ${String(order.status || "unknown")}`
+        },
+        { status: 409 }
+      )
+    }
+
     if (order.supplierUID && order.supplierUID !== supplierUID) {
       return NextResponse.json(
         {
@@ -131,6 +142,24 @@ export async function POST(req: Request) {
 
     sendAwaitingPaymentNotification(order).catch((emailError) => {
       console.error("AWAITING_PAYMENT_EMAIL_ERROR:", emailError)
+    })
+
+    await recordActivity({
+      actorType: "supplier",
+      actorUID: supplierUID,
+      actorEmail: auth.email,
+      action: "order.verified",
+      entityType: "order",
+      entityId: String(order._id),
+      level: "success",
+      message: `Supplier verified order ${String(order._id).slice(-8)} with ${verifiedPages} pages`,
+      metadata: {
+        orderId: String(order._id),
+        userUID: String(order.userUID),
+        supplierUID,
+        verifiedPages,
+        finalPrice
+      }
     })
 
     return NextResponse.json({

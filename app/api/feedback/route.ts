@@ -11,6 +11,7 @@ import {
   enforceSubmissionGuards,
   getRequestDeviceKey
 } from "@/lib/submission-protection"
+import { recordActivity } from "@/lib/activity-log"
 
 export const runtime = "nodejs"
 
@@ -120,6 +121,19 @@ export async function POST(req: Request) {
       ...ratings,
       overallRating: computeOverallFeedbackRating(ratings),
       message
+    })
+
+    await recordActivity({
+      actorType: "public",
+      action: "feedback.submitted",
+      entityType: "feedback",
+      entityId: String(feedback._id),
+      level: "success",
+      message: "A public feedback response was submitted",
+      metadata: {
+        feedbackId: String(feedback._id),
+        overallRating: Number(feedback.overallRating || 0)
+      }
     })
 
     return NextResponse.json({

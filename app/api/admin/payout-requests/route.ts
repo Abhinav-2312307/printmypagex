@@ -3,6 +3,7 @@ import { authenticateAdminRequest } from "@/lib/admin-auth"
 import SupplierPayoutRequest from "@/models/SupplierPayoutRequest"
 import Supplier from "@/models/Supplier"
 import { getSupplierWalletSummary } from "@/lib/supplier-wallet"
+import { recordActivity } from "@/lib/activity-log"
 
 export async function GET(req: Request) {
   const auth = await authenticateAdminRequest(req)
@@ -95,6 +96,23 @@ export async function POST(req: Request) {
   requestDoc.processedBy = auth.uid
 
   await requestDoc.save()
+
+  await recordActivity({
+    actorType: "admin",
+    actorUID: auth.uid,
+    actorEmail: auth.email,
+    action: action === "approve" ? "payout.approved" : "payout.rejected",
+    entityType: "payout_request",
+    entityId: String(requestDoc._id),
+    level: action === "approve" ? "success" : "warning",
+    message: `Admin ${action}d payout request ${String(requestDoc._id).slice(-8)}`,
+    metadata: {
+      requestId: String(requestDoc._id),
+      supplierUID: String(requestDoc.supplierUID),
+      amount: Number(requestDoc.amount || 0),
+      note
+    }
+  })
 
   return NextResponse.json({
     success: true,

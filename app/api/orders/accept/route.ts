@@ -8,6 +8,7 @@ import { authenticateSupplierRequest } from "@/lib/supplier-auth"
 import { applyOrderLifecycleRules } from "@/lib/order-lifecycle"
 import { calculatePrintPrice } from "@/lib/print-pricing"
 import { getPrintPricing } from "@/lib/print-pricing-store"
+import { recordActivity } from "@/lib/activity-log"
 
 export const runtime = "nodejs"
 
@@ -142,7 +143,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: false,
       message: "Order already accepted"
-    })
+    }, { status: 409 })
   }
 
   try {
@@ -166,6 +167,24 @@ export async function POST(req: Request) {
     orderId: String(order._id),
     supplierUID,
     verifiedPages
+  })
+
+  await recordActivity({
+    actorType: "supplier",
+    actorUID: supplierUID,
+    actorEmail: auth.email,
+    action: "order.accepted",
+    entityType: "order",
+    entityId: String(order._id),
+    level: "success",
+    message: `Supplier accepted order ${String(order._id).slice(-8)} and verified ${verifiedPages} pages`,
+    metadata: {
+      orderId: String(order._id),
+      userUID: String(order.userUID),
+      supplierUID,
+      verifiedPages,
+      finalPrice: Number(order.finalPrice ?? 0)
+    }
   })
 
   return NextResponse.json({

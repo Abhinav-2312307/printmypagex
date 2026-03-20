@@ -1,8 +1,14 @@
 import Order from "@/models/Order"
 import SupplierPayoutRequest from "@/models/SupplierPayoutRequest"
+import {
+  roundCurrency,
+  summarizeDeliveredRevenue
+} from "@/lib/revenue"
 
-export const RAZORPAY_FEE_RATE = 0.02
-export const GST_ON_FEE_RATE = 0.18
+type DeliveredOrderAmount = {
+  finalPrice?: number | null
+  estimatedPrice?: number | null
+}
 
 export type SupplierWalletSummary = {
   grossDeliveredRevenue: number
@@ -14,35 +20,15 @@ export type SupplierWalletSummary = {
   availableToClaim: number
 }
 
-function round2(value: number) {
-  return Math.round(value * 100) / 100
-}
-
 export async function getSupplierWalletSummary(supplierUID: string): Promise<SupplierWalletSummary> {
-  const [deliveredAgg, payoutAgg] = await Promise.all([
-    Order.aggregate<{ grossDeliveredRevenue: number }>([
-      {
-        $match: {
-          supplierUID,
-          status: "delivered",
-          paymentStatus: "paid"
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          grossDeliveredRevenue: {
-            $sum: {
-              $cond: [
-                { $ifNull: ["$finalPrice", false] },
-                "$finalPrice",
-                "$estimatedPrice"
-              ]
-            }
-          }
-        }
-      }
-    ]),
+  const [deliveredOrders, payoutAgg] = await Promise.all([
+    Order.find({
+      supplierUID,
+      status: "delivered",
+      paymentStatus: "paid"
+    })
+      .select("finalPrice estimatedPrice")
+      .lean<DeliveredOrderAmount[]>(),
     SupplierPayoutRequest.aggregate<{ _id: string; total: number }>([
       {
         $match: {
@@ -59,20 +45,21 @@ export async function getSupplierWalletSummary(supplierUID: string): Promise<Sup
     ])
   ])
 
-  const grossDeliveredRevenue = round2(deliveredAgg[0]?.grossDeliveredRevenue || 0)
-  const razorpayFees = round2(grossDeliveredRevenue * RAZORPAY_FEE_RATE)
-  const gstOnFees = round2(razorpayFees * GST_ON_FEE_RATE)
-  const netRevenue = round2(grossDeliveredRevenue - razorpayFees - gstOnFees)
+  const deliveredRevenue = summarizeDeliveredRevenue(deliveredOrders)
+  const grossDeliveredRevenue = deliveredRevenue.grossRevenue
+  const razorpayFees = deliveredRevenue.razorpayFees
+  const gstOnFees = deliveredRevenue.gstOnFees
+  const netRevenue = deliveredRevenue.netRevenue
 
-  const totalClaimed = round2(
+  const totalClaimed = roundCurrency(
     payoutAgg.find((item) => item._id === "approved")?.total || 0
   )
 
-  const pendingRequested = round2(
+  const pendingRequested = roundCurrency(
     payoutAgg.find((item) => item._id === "pending")?.total || 0
   )
 
-  const availableToClaim = round2(Math.max(0, netRevenue - totalClaimed - pendingRequested))
+  const availableToClaim = roundCurrency(Math.max(0, netRevenue - totalClaimed - pendingRequested))
 
   return {
     grossDeliveredRevenue,

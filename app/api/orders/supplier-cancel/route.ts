@@ -4,6 +4,7 @@ import Order from "@/models/Order"
 import { pusherServer } from "@/lib/pusher-server"
 import { sendOrderCancelledNotification } from "@/lib/order-email"
 import { authenticateSupplierRequest } from "@/lib/supplier-auth"
+import { recordActivity } from "@/lib/activity-log"
 
 export const runtime = "nodejs"
 
@@ -44,13 +45,25 @@ const order = await Order.findOne({
 })
 
 if(!order){
-return NextResponse.json({success:false})
+return NextResponse.json(
+{
+success:false,
+message:"Order not found"
+},
+{ status:404 }
+)
 }
 
 /* only supplier who owns order can cancel */
 
 if(order.supplierUID !== supplierUID){
-return NextResponse.json({success:false})
+return NextResponse.json(
+{
+success:false,
+message:"You are not allowed to cancel this order"
+},
+{ status:403 }
+)
 }
 
 /* cannot cancel paid order */
@@ -59,7 +72,14 @@ if(order.paymentStatus === "paid"){
 return NextResponse.json({
 success:false,
 message:"Cannot cancel paid order"
-})
+},{ status:409 })
+}
+
+if(order.status === "cancelled"){
+return NextResponse.json({
+success:false,
+message:"Order is already cancelled"
+},{ status:409 })
 }
 
 order.status = "cancelled"
@@ -72,13 +92,34 @@ time:new Date()
 
 await order.save()
 
+await recordActivity({
+actorType:"supplier",
+actorUID:supplierUID,
+actorEmail:auth.email,
+action:"order.cancelled_by_supplier",
+entityType:"order",
+entityId:String(order._id),
+level:"warning",
+message:`Supplier cancelled order ${String(order._id).slice(-8)}`,
+metadata:{
+orderId:String(order._id),
+userUID:String(order.userUID),
+supplierUID,
+paymentStatus:String(order.paymentStatus || "")
+}
+})
+
 /* realtime update for user */
 
+try{
 await pusherServer.trigger(
 `private-user-${order.userUID}`,
 "order-updated",
 order
 )
+}catch(pushError){
+console.error("PUSHER USER SUPPLIER CANCEL ERROR:",pushError)
+}
 
 sendOrderCancelledNotification(order, "supplier").catch((emailError) => {
 console.error("ORDER_CANCELLED_EMAIL_ERROR:", emailError)

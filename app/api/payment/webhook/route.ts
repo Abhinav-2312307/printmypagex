@@ -5,6 +5,7 @@ import Order from "@/models/Order"
 import { pusherServer } from "@/lib/pusher-server"
 import { sendPaymentReceivedNotifications } from "@/lib/order-email"
 import { applyOrderLifecycleRules } from "@/lib/order-lifecycle"
+import { recordActivity } from "@/lib/activity-log"
 
 export const runtime = "nodejs"
 
@@ -89,6 +90,19 @@ export async function POST(req: Request) {
         time: new Date()
       })
       await order.save()
+      await recordActivity({
+        actorType: "system",
+        action: "payment.webhook_ignored",
+        entityType: "order",
+        entityId: String(order._id),
+        level: "warning",
+        message: `Ignored captured payment webhook for cancelled order ${String(order._id).slice(-8)}`,
+        metadata: {
+          orderId: String(order._id),
+          razorpayOrderId: String(payment.order_id),
+          razorpayPaymentId: String(payment.id)
+        }
+      })
       return NextResponse.json({ success: true, message: "Cancelled order payment ignored" })
     }
 
@@ -125,6 +139,22 @@ export async function POST(req: Request) {
 
       sendPaymentReceivedNotifications(order).catch((emailError) => {
         console.error("PAYMENT_RECEIVED_EMAIL_ERROR:", emailError)
+      })
+
+      await recordActivity({
+        actorType: "system",
+        action: "payment.webhook_captured",
+        entityType: "order",
+        entityId: String(order._id),
+        level: "success",
+        message: `Webhook captured payment for order ${String(order._id).slice(-8)}`,
+        metadata: {
+          orderId: String(order._id),
+          userUID: String(order.userUID),
+          supplierUID: String(order.supplierUID || ""),
+          razorpayOrderId: String(payment.order_id),
+          razorpayPaymentId: String(payment.id)
+        }
       })
     }
 

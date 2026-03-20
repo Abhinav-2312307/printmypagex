@@ -6,6 +6,7 @@ import { pusherServer } from "@/lib/pusher-server"
 import { sendPaymentReceivedNotifications } from "@/lib/order-email"
 import { authenticateUserRequest } from "@/lib/user-auth"
 import { applyOrderLifecycleRules } from "@/lib/order-lifecycle"
+import { recordActivity } from "@/lib/activity-log"
 
 export const runtime = "nodejs"
 
@@ -169,6 +170,25 @@ export async function POST(req: Request) {
 
     sendPaymentReceivedNotifications(order).catch((emailError) => {
       console.error("PAYMENT_RECEIVED_EMAIL_ERROR:", emailError)
+    })
+
+    await recordActivity({
+      actorType: "user",
+      actorUID: userUID,
+      actorEmail: auth.email,
+      action: "payment.verified",
+      entityType: "order",
+      entityId: String(order._id),
+      level: "success",
+      message: `Payment verified for order ${String(order._id).slice(-8)}`,
+      metadata: {
+        orderId: String(order._id),
+        userUID,
+        supplierUID: String(order.supplierUID || ""),
+        razorpayOrderId: razorpay_order_id,
+        razorpayPaymentId: razorpay_payment_id,
+        amount: Number(order.finalPrice ?? order.estimatedPrice ?? 0)
+      }
     })
 
     return NextResponse.json({

@@ -4,6 +4,11 @@ import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
 import SupplierGuard from "@/components/SupplierGuard"
 import { authFetch } from "@/lib/client-auth"
+import {
+roundCurrency,
+calculateRevenueBreakdownFromGross,
+getOrderCollectedAmount
+} from "@/lib/revenue"
 
 import {
 ResponsiveContainer,
@@ -58,6 +63,13 @@ type PayoutRequest = {
 }
 
 const STATUS_COLORS = ["#60a5fa","#a78bfa","#34d399","#f59e0b","#10b981","#f87171"]
+
+const formatMoney = (value:number)=>
+new Intl.NumberFormat("en-IN",{
+style:"currency",
+currency:"INR",
+maximumFractionDigits:2
+}).format(Number(value || 0))
 
 export default function SupplierDashboard() {
 
@@ -211,6 +223,10 @@ if(!dateValue) return
 const key = new Date(dateValue).toISOString().slice(0,10)
 const point = points.get(key)
 if(!point) return
+if(field === "revenue"){
+point[field] = roundCurrency(point[field] + amount)
+return
+}
 point[field] += amount
 }
 
@@ -223,10 +239,11 @@ if(isAccepted){
 addToSeries(order.acceptedAt || order.createdAt,"accepted",1)
 }
 
-if(order.status==="delivered"){
+if(order.status==="delivered" && order.paymentStatus==="paid"){
 addToSeries(order.deliveredAt || order.createdAt,"delivered",1)
-const price = Number(order.finalPrice ?? order.estimatedPrice ?? 0)
-addToSeries(order.deliveredAt || order.createdAt,"revenue",price)
+const price = getOrderCollectedAmount(order)
+const netEarning = calculateRevenueBreakdownFromGross(price).netRevenue
+addToSeries(order.deliveredAt || order.createdAt,"revenue",netEarning)
 }
 })
 
@@ -276,7 +293,7 @@ return [
 
 const avgOrderValue =
 totals.delivered > 0
-? Math.round(totals.revenue / totals.delivered)
+? roundCurrency(totals.revenue / totals.delivered)
 : 0
 
 
@@ -348,9 +365,9 @@ className="px-4 py-2 bg-card rounded-lg"
 </div>
 
 <div className="bg-card p-6 rounded-xl">
-<p className="text-gray-400">Revenue ({duration})</p>
+<p className="text-gray-400">Net Revenue ({duration})</p>
 <h2 className="text-3xl font-bold">
-₹{totals.revenue}
+{formatMoney(totals.revenue)}
 </h2>
 </div>
 
@@ -362,31 +379,31 @@ className="px-4 py-2 bg-card rounded-lg"
 <div className="grid md:grid-cols-4 gap-4 text-sm">
 <div>
 <p className="text-gray-400">Gross Delivered Revenue</p>
-<p className="font-semibold text-lg">₹{wallet.grossDeliveredRevenue}</p>
+<p className="font-semibold text-lg">{formatMoney(wallet.grossDeliveredRevenue)}</p>
 </div>
 <div>
 <p className="text-gray-400">Razorpay Fees</p>
-<p className="font-semibold text-lg">₹{wallet.razorpayFees}</p>
+<p className="font-semibold text-lg">{formatMoney(wallet.razorpayFees)}</p>
 </div>
 <div>
 <p className="text-gray-400">GST on Fees</p>
-<p className="font-semibold text-lg">₹{wallet.gstOnFees}</p>
+<p className="font-semibold text-lg">{formatMoney(wallet.gstOnFees)}</p>
 </div>
 <div>
 <p className="text-gray-400">Net Revenue</p>
-<p className="font-semibold text-lg">₹{wallet.netRevenue}</p>
+<p className="font-semibold text-lg">{formatMoney(wallet.netRevenue)}</p>
 </div>
 <div>
 <p className="text-gray-400">Already Claimed</p>
-<p className="font-semibold text-lg">₹{wallet.totalClaimed}</p>
+<p className="font-semibold text-lg">{formatMoney(wallet.totalClaimed)}</p>
 </div>
 <div>
 <p className="text-gray-400">Pending Claim Requests</p>
-<p className="font-semibold text-lg">₹{wallet.pendingRequested}</p>
+<p className="font-semibold text-lg">{formatMoney(wallet.pendingRequested)}</p>
 </div>
 <div>
 <p className="text-gray-400">Available to Claim</p>
-<p className="font-semibold text-lg text-emerald-400">₹{wallet.availableToClaim}</p>
+<p className="font-semibold text-lg text-emerald-400">{formatMoney(wallet.availableToClaim)}</p>
 </div>
 </div>
 
@@ -415,7 +432,7 @@ className="px-4 py-2 bg-indigo-500 rounded-lg"
 <div className="space-y-2 text-sm">
 {payoutRequests.slice(0,5).map((item)=>(
 <div key={item._id} className="flex justify-between border border-white/10 rounded-lg px-3 py-2">
-<span>₹{item.amount}</span>
+<span>{formatMoney(item.amount)}</span>
 <span>{item.status}</span>
 <span>{new Date(item.createdAt).toLocaleString()}</span>
 </div>
@@ -497,7 +514,7 @@ strokeWidth={3}
 <div className="bg-card p-6 rounded-xl">
 
 <h2 className="text-xl mb-4">
-Revenue Trend (Delivered Only)
+Net Revenue Trend (Delivered + Paid)
 </h2>
 
 <ResponsiveContainer width="100%" height={300}>
@@ -552,7 +569,7 @@ paddingAngle={3}
 </ResponsiveContainer>
 
 <div className="mt-4 text-sm text-gray-300">
-Delivered: <span className="font-semibold">{totals.delivered}</span> | Avg Delivered Order Value: <span className="font-semibold">₹{avgOrderValue}</span>
+Delivered: <span className="font-semibold">{totals.delivered}</span> | Avg Delivered Net Earning: <span className="font-semibold">{formatMoney(avgOrderValue)}</span>
 </div>
 
 </div>

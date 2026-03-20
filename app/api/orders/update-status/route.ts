@@ -5,6 +5,7 @@ import { pusherServer } from "@/lib/pusher-server"
 import { sendOrderStatusNotification } from "@/lib/order-email"
 import { authenticateSupplierRequest } from "@/lib/supplier-auth"
 import { applyOrderLifecycleRules } from "@/lib/order-lifecycle"
+import { recordActivity } from "@/lib/activity-log"
 
 export const runtime = "nodejs"
 
@@ -53,6 +54,8 @@ message:"Order not found"
 )
 }
 
+const previousStatus = String(order.status || "")
+
 if(order.supplierUID !== supplierUID){
 return NextResponse.json(
 {
@@ -69,12 +72,12 @@ printing:["printed"],
 printed:["delivered"]
 }
 
-const nextStates = allowedNext[order.status] || []
+const nextStates = allowedNext[previousStatus] || []
 if(!nextStates.includes(status)){
 return NextResponse.json(
 {
 success:false,
-message:`Cannot move order from ${order.status} to ${status}`
+message:`Cannot move order from ${previousStatus} to ${status}`
 },
 { status:409 }
 )
@@ -102,6 +105,25 @@ time:new Date()
 })
 
 await order.save()
+
+await recordActivity({
+actorType:"supplier",
+actorUID:supplierUID,
+actorEmail:auth.email,
+action:"order.status_updated",
+entityType:"order",
+entityId:String(order._id),
+level:"info",
+message:`Supplier moved order ${String(order._id).slice(-8)} from ${previousStatus} to ${status}`,
+metadata:{
+orderId:String(order._id),
+userUID:String(order.userUID),
+supplierUID,
+previousStatus,
+nextStatus:status,
+paymentStatus:String(order.paymentStatus || "")
+}
+})
 
 try{
 await pusherServer.trigger(`private-user-${order.userUID}`,"order-updated",order)

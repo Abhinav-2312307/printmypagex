@@ -11,6 +11,7 @@ createSubmissionLimitResponse,
 enforceSubmissionGuards,
 getRequestDeviceKey
 } from "@/lib/submission-protection"
+import { recordActivity } from "@/lib/activity-log"
 
 const SUPPLIER_APPLY_DEVICE_RULES = [
 {
@@ -177,7 +178,7 @@ hasEmail: Boolean(body.email)
 
 return NextResponse.json({
 error: "Already applied"
-})
+},{ status:409 })
 }
 
 const supplier = await Supplier.create({
@@ -230,6 +231,24 @@ firebaseUID: body.firebaseUID,
 hasEmail: Boolean(body.email)
 })
 
+await recordActivity({
+actorType:"user",
+actorUID:auth.uid,
+actorEmail:auth.email,
+action:"supplier.application_submitted",
+entityType:"supplier",
+entityId:String(supplier.firebaseUID || auth.uid),
+level:"info",
+message:`User submitted supplier application for ${body.email || auth.uid}`,
+metadata:{
+firebaseUID:auth.uid,
+name,
+email:String(body.email || auth.email || ""),
+branch,
+year:yearNum
+}
+})
+
 return NextResponse.json({
 success: true,
 supplier
@@ -241,7 +260,7 @@ console.log(err)
 
 return NextResponse.json({
 error: "Server error"
-})
+},{ status:500 })
 
 }
 

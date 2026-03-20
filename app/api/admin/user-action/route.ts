@@ -3,6 +3,7 @@ import { authenticateAdminRequest } from "@/lib/admin-auth"
 import User from "@/models/User"
 import Order from "@/models/Order"
 import { mergeUserRoles } from "@/lib/user-roles"
+import { recordActivity } from "@/lib/activity-log"
 
 export async function POST(req: Request) {
   const auth = await authenticateAdminRequest(req)
@@ -60,6 +61,21 @@ export async function POST(req: Request) {
       { returnDocument: "after" }
     )
 
+    await recordActivity({
+      actorType: "admin",
+      actorUID: auth.uid,
+      actorEmail: auth.email,
+      action: "user.role_updated",
+      entityType: "user",
+      entityId: firebaseUID,
+      level: "info",
+      message: `Admin set role ${role} for user ${user?.email || firebaseUID}`,
+      metadata: {
+        firebaseUID,
+        role
+      }
+    })
+
     return NextResponse.json({ success: true, user })
   }
 
@@ -76,6 +92,21 @@ export async function POST(req: Request) {
         { status: 404 }
       )
     }
+
+    await recordActivity({
+      actorType: "admin",
+      actorUID: auth.uid,
+      actorEmail: auth.email,
+      action: action === "activate" ? "user.activated" : "user.deactivated",
+      entityType: "user",
+      entityId: firebaseUID,
+      level: action === "activate" ? "success" : "warning",
+      message: `Admin ${action === "activate" ? "activated" : "deactivated"} user ${user.email || firebaseUID}`,
+      metadata: {
+        firebaseUID,
+        active: Boolean(user.active)
+      }
+    })
 
     return NextResponse.json({ success: true, user })
   }
@@ -94,6 +125,21 @@ export async function POST(req: Request) {
       )
     }
 
+    await recordActivity({
+      actorType: "admin",
+      actorUID: auth.uid,
+      actorEmail: auth.email,
+      action: action === "approve" ? "user.approved" : "user.disapproved",
+      entityType: "user",
+      entityId: firebaseUID,
+      level: action === "approve" ? "success" : "warning",
+      message: `Admin ${action === "approve" ? "approved" : "disapproved"} user ${user.email || firebaseUID}`,
+      metadata: {
+        firebaseUID,
+        approved: Boolean(user.approved)
+      }
+    })
+
     return NextResponse.json({ success: true, user })
   }
 
@@ -102,6 +148,20 @@ export async function POST(req: Request) {
       User.deleteOne({ firebaseUID }),
       Order.deleteMany({ userUID: firebaseUID })
     ])
+
+    await recordActivity({
+      actorType: "admin",
+      actorUID: auth.uid,
+      actorEmail: auth.email,
+      action: "user.deleted",
+      entityType: "user",
+      entityId: firebaseUID,
+      level: "warning",
+      message: `Admin deleted user ${firebaseUID}`,
+      metadata: {
+        firebaseUID
+      }
+    })
 
     return NextResponse.json({ success: true })
   }
