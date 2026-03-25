@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { auth } from "@/lib/firebase"
 import { signOut, onAuthStateChanged, User } from "firebase/auth"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import ProfileCard from "@/components/ProfileCard"
 import CandleThemeToggle from "@/components/CandleThemeToggle"
 import { authFetch } from "@/lib/client-auth"
@@ -72,6 +72,7 @@ export default function Navbar({
   showSpacer = true
 }: NavbarProps = {}) {
   const router = useRouter()
+  const pathname = usePathname()
   const dropdownRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
@@ -217,7 +218,9 @@ export default function Navbar({
     setShowProfile(true)
   }
 
-  const resolvedButtons = navButtons && navButtons.length > 0 ? navButtons : defaultNavButtons
+  const resolvedButtons = (navButtons && navButtons.length > 0 ? navButtons : defaultNavButtons).filter(
+    (button) => !(pathname === "/pricing" && button.href === "/pricing")
+  )
 
   const renderNavButton = (button: NavbarButton, index: number) => {
     const variant = button.variant || "glass"

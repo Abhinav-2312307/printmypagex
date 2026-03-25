@@ -17,7 +17,24 @@ return (
 
 <div className="min-h-screen bg-gradient-to-br from-white via-gray-100 to-gray-200 dark:from-black dark:via-[#0b0b15] dark:to-black text-black dark:text-white">
 
-<Navbar/>
+<Navbar
+navButtons={[
+{
+label:"Pricing",
+href:"/pricing",
+variant:"glass"
+},
+{
+label:"Feedback",
+href:"/feedback",
+variant:"glass"
+},
+{
+label:"Contact",
+href:"/contact",
+variant:"contact"
+}
+]}/>
 
 <div className="max-w-7xl mx-auto px-6 py-24">
 

@@ -147,6 +147,11 @@ return(
 <Navbar
 navButtons={[
 {
+label:"Pricing",
+href:"/pricing",
+variant:"glass"
+},
+{
 label:"Feedback",
 href:"/feedback",
 variant:"glass"
