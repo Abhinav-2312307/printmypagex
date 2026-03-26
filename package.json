@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "cloudinary": "^2.9.0",
     "firebase": "^12.9.0",
     "firebase-admin": "^13.7.0",
