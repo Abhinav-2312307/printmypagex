@@ -121,6 +121,16 @@ const OrderSchema = new mongoose.Schema({
     default:null
   },
 
+  adminReminderCount:{
+    type:Number,
+    default:0
+  },
+
+  lastAdminReminderAt:{
+    type:Date,
+    default:null
+  },
+
   status:{
     type:String,
     enum:[

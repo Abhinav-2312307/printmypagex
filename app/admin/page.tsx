@@ -168,6 +168,8 @@ type AdminOrder = {
   razorpayOrderId?: string | null
   razorpayPaymentId?: string | null
   paidAt?: string | null
+  adminReminderCount?: number
+  lastAdminReminderAt?: string | null
   status: string
   acceptedAt?: string | null
   deliveredAt?: string | null
@@ -375,6 +377,10 @@ function formatActivityActor(log: Pick<AdminActivityLog, "actorType" | "actorEma
   return String(log.actorType || "system").toUpperCase()
 }
 
+function hasValidEmail(value?: string | null) {
+  return Boolean(value && value.includes("@"))
+}
+
 function getOrderStatusOptions(paymentStatus: string, currentStatus?: string) {
   const options =
     paymentStatus === "paid"
@@ -458,6 +464,10 @@ export default function AdminPortalPage() {
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [selectedSupplier, setSelectedSupplier] = useState<AdminSupplier | null>(null)
   const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null)
+  const [userMailForm, setUserMailForm] = useState({
+    subject: "",
+    message: ""
+  })
   const [orderEditForm, setOrderEditForm] = useState({
     status: "",
     verifiedPages: "",
@@ -466,6 +476,7 @@ export default function AdminPortalPage() {
     discountAmount: "",
     note: ""
   })
+  const [orderReminderNote, setOrderReminderNote] = useState("")
   const [showControlHub, setShowControlHub] = useState(false)
 
   const [ordersWorkspace, setOrdersWorkspace] = useState<OrdersWorkspace | null>(null)
@@ -641,6 +652,25 @@ export default function AdminPortalPage() {
       discountAmount: selectedOrder.discountAmount ? String(selectedOrder.discountAmount) : "",
       note: ""
     })
+  }, [selectedOrder])
+
+  useEffect(() => {
+    if (!selectedUser) {
+      setUserMailForm({
+        subject: "",
+        message: ""
+      })
+      return
+    }
+
+    setUserMailForm({
+      subject: "PrintMyPage admin update",
+      message: ""
+    })
+  }, [selectedUser])
+
+  useEffect(() => {
+    setOrderReminderNote("")
   }, [selectedOrder])
 
   const logout = async () => {
@@ -933,6 +963,108 @@ export default function AdminPortalPage() {
       )
 
       setMessage(response.message || "Order updated successfully")
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError))
+    } finally {
+      setBusyAction("")
+    }
+  }
+
+  const runUserMessageEmail = async () => {
+    if (!selectedUser?.firebaseUID) return
+
+    const subject = userMailForm.subject.replace(/\s+/g, " ").trim()
+    const body = userMailForm.message.trim()
+
+    if (!hasValidEmail(selectedUser.email)) {
+      setError("Selected user does not have a valid email address")
+      return
+    }
+
+    if (!subject) {
+      setError("Email subject is required")
+      return
+    }
+
+    if (!body) {
+      setError("Email message is required")
+      return
+    }
+
+    try {
+      setBusyAction(`user-mail-${selectedUser.firebaseUID}`)
+      setError("")
+
+      const response = await adminFetch<{ success: boolean; message?: string; user?: AdminUser }>(
+        "/api/admin/notifications",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            action: "send_user_message",
+            userUID: selectedUser.firebaseUID,
+            subject,
+            message: body
+          })
+        }
+      )
+
+      setUserMailForm((prev) => ({
+        ...prev,
+        message: ""
+      }))
+      setMessage(response.message || "Message email sent successfully")
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError))
+    } finally {
+      setBusyAction("")
+    }
+  }
+
+  const runOrderReminderEmail = async () => {
+    if (!selectedOrder) return
+
+    if (selectedOrder.paymentStatus === "paid") {
+      setError("Reminder mail is only available for unpaid orders")
+      return
+    }
+
+    if (selectedOrder.status !== "awaiting_payment") {
+      setError("Reminder mail can only be sent when the order is awaiting payment")
+      return
+    }
+
+    if (!hasValidEmail(selectedOrder.user?.email)) {
+      setError("Selected order user does not have a valid email address")
+      return
+    }
+
+    try {
+      setBusyAction(`order-reminder-${selectedOrder._id}`)
+      setError("")
+
+      const response = await adminFetch<{ success: boolean; message?: string; order: AdminOrder }>(
+        "/api/admin/notifications",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            action: "send_payment_reminder",
+            orderId: selectedOrder._id,
+            note: orderReminderNote.trim()
+          })
+        }
+      )
+
+      const updatedOrder = response.order
+
+      setOrders((prev) =>
+        prev.map((item) => (item._id === updatedOrder._id ? updatedOrder : item))
+      )
+      setSelectedOrder(updatedOrder)
+      setWorkspaceOrderDetail((prev) =>
+        prev && prev._id === updatedOrder._id ? updatedOrder : prev
+      )
+      setOrderReminderNote("")
+      setMessage(response.message || "Payment reminder email sent successfully")
     } catch (caughtError) {
       setError(getErrorMessage(caughtError))
     } finally {
@@ -3384,6 +3516,61 @@ export default function AdminPortalPage() {
               </div>
             </div>
 
+            <div className="mt-6 space-y-3 rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 p-4">
+              <div>
+                <p className="text-sm font-semibold">Send Message Mail</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Send a manual notification email directly to this user from the admin portal.
+                </p>
+              </div>
+
+              <label className="text-xs text-gray-500 dark:text-gray-400">
+                Subject
+                <input
+                  type="text"
+                  value={userMailForm.subject}
+                  onChange={(event) =>
+                    setUserMailForm((prev) => ({
+                      ...prev,
+                      subject: event.target.value
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-gray-200 dark:border-white/20 bg-white/80 dark:bg-black/30 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                  placeholder="PrintMyPage admin update"
+                />
+              </label>
+
+              <label className="text-xs text-gray-500 dark:text-gray-400">
+                Message
+                <textarea
+                  value={userMailForm.message}
+                  onChange={(event) =>
+                    setUserMailForm((prev) => ({
+                      ...prev,
+                      message: event.target.value
+                    }))
+                  }
+                  rows={5}
+                  className="mt-1 w-full rounded-lg border border-gray-200 dark:border-white/20 bg-white/80 dark:bg-black/30 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                  placeholder="Write the email message you want to send."
+                />
+              </label>
+
+              {!hasValidEmail(selectedUser.email) ? (
+                <p className="text-xs text-amber-600 dark:text-amber-300">
+                  Add a valid email address to this user profile before sending mail.
+                </p>
+              ) : null}
+
+              <button
+                onClick={runUserMessageEmail}
+                disabled={!hasValidEmail(selectedUser.email) || busyAction === `user-mail-${selectedUser.firebaseUID}`}
+                className="w-full rounded-xl border border-indigo-400/40 bg-indigo-500/15 px-4 py-2.5 text-sm font-semibold text-indigo-600 disabled:opacity-60 dark:text-cyan-200"
+              >
+                {busyAction === `user-mail-${selectedUser.firebaseUID}` ? "Sending..." : "Send Message Mail"}
+              </button>
+            </div>
+
             <div className="mt-6">
               <p className="text-sm font-medium mb-2">Recent Orders</p>
               <div className="space-y-2">
@@ -3751,6 +3938,69 @@ export default function AdminPortalPage() {
                 className="w-full rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
               >
                 {busyAction === `order-update-${selectedOrder._id}` ? "Saving..." : "Save Order Changes"}
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-3 rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold">Reminder Mail</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Resend a payment reminder to the user when this order has been waiting too long.
+                  </p>
+                </div>
+
+                <div className="text-right">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">Manual reminders</p>
+                  <p className="font-semibold mt-1">{selectedOrder.adminReminderCount || 0}</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                    {selectedOrder.lastAdminReminderAt
+                      ? formatDateTime(selectedOrder.lastAdminReminderAt)
+                      : "Not sent yet"}
+                  </p>
+                </div>
+              </div>
+
+              <label className="text-xs text-gray-500 dark:text-gray-400">
+                Reminder Note
+                <textarea
+                  value={orderReminderNote}
+                  onChange={(event) => setOrderReminderNote(event.target.value)}
+                  rows={3}
+                  className="mt-1 w-full rounded-lg border border-gray-200 dark:border-white/20 bg-white/80 dark:bg-black/30 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                  placeholder="Optional note to include in the reminder email."
+                />
+              </label>
+
+              {selectedOrder.paymentStatus === "paid" ? (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Reminder mail is disabled because payment is already complete.
+                </p>
+              ) : null}
+
+              {selectedOrder.paymentStatus !== "paid" && selectedOrder.status !== "awaiting_payment" ? (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Reminder mail becomes available once the order reaches the awaiting payment stage.
+                </p>
+              ) : null}
+
+              {!hasValidEmail(selectedOrder.user?.email) ? (
+                <p className="text-xs text-amber-600 dark:text-amber-300">
+                  This user does not currently have a valid email address saved.
+                </p>
+              ) : null}
+
+              <button
+                onClick={runOrderReminderEmail}
+                disabled={
+                  !hasValidEmail(selectedOrder.user?.email) ||
+                  selectedOrder.paymentStatus === "paid" ||
+                  selectedOrder.status !== "awaiting_payment" ||
+                  busyAction === `order-reminder-${selectedOrder._id}`
+                }
+                className="w-full rounded-xl border border-indigo-400/40 bg-indigo-500/15 px-4 py-2.5 text-sm font-semibold text-indigo-600 disabled:opacity-60 dark:text-cyan-200"
+              >
+                {busyAction === `order-reminder-${selectedOrder._id}` ? "Sending..." : "Send Reminder Mail"}
               </button>
             </div>
 

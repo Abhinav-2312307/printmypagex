@@ -7,6 +7,7 @@ type EmailPayload = {
   to: string
   subject: string
   html: string
+  replyTo?: string
 }
 
 type OrderEmailData = {
@@ -28,6 +29,18 @@ type UserRecord = {
   firebaseUID: string
   email?: string
   name?: string
+}
+
+type AdminUserMessageInput = {
+  firebaseUID: string
+  subject: string
+  message: string
+  adminEmail?: string
+}
+
+type AdminPaymentReminderOptions = {
+  note?: string
+  adminEmail?: string
 }
 
 const appName = "PrintMyPage"
@@ -54,6 +67,39 @@ async function sendEmail(payload: EmailPayload) {
   } catch (error) {
     console.error("EMAIL_SEND_ERROR:", error)
   }
+}
+
+async function sendEmailStrict(payload: EmailPayload) {
+  console.log("ORDER_EMAIL_DEBUG: Sending email", {
+    subject: payload.subject,
+    to: payload.to
+  })
+  await sendAppEmail(payload)
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+function renderMultilineText(value: string) {
+  return escapeHtml(value).replace(/\r?\n/g, "<br />")
+}
+
+function renderAdminNote(note?: string) {
+  const trimmed = String(note || "").trim()
+  if (!trimmed) return ""
+
+  return `
+    <div style="margin:16px 0;padding:12px 14px;border-radius:12px;background:#eff6ff;border:1px solid #bfdbfe;">
+      <p style="margin:0 0 6px 0;font-weight:600;">Admin note</p>
+      <p style="margin:0;line-height:1.6;">${renderMultilineText(trimmed)}</p>
+    </div>
+  `
 }
 
 function orderSummaryHtml(order: OrderEmailData) {
@@ -346,4 +392,64 @@ export async function sendPaymentReceivedNotifications(order: OrderEmailData) {
       })
     }
   }
+}
+
+export async function sendAdminMessageToUser(input: AdminUserMessageInput) {
+  const userProfile = await getUserEmail(String(input.firebaseUID))
+  if (!userProfile.email) {
+    throw new Error("Selected user does not have a valid email address")
+  }
+
+  const normalizedSubject = String(input.subject || "").replace(/\s+/g, " ").trim()
+  const normalizedMessage = String(input.message || "").trim()
+
+  if (!normalizedSubject) {
+    throw new Error("Email subject is required")
+  }
+
+  if (!normalizedMessage) {
+    throw new Error("Email message is required")
+  }
+
+  await sendEmailStrict({
+    to: userProfile.email,
+    subject: normalizedSubject,
+    replyTo: input.adminEmail || undefined,
+    html: `
+      <h2>Message from ${appName} admin</h2>
+      <p>Hi ${escapeHtml(userProfile.name || "User")},</p>
+      <p style="line-height:1.7;">${renderMultilineText(normalizedMessage)}</p>
+      <p>If you need help, you can reply to this email.</p>
+      ${input.adminEmail ? `<p><strong>Sent by:</strong> ${escapeHtml(input.adminEmail)}</p>` : ""}
+    `
+  })
+}
+
+export async function sendAdminPaymentReminderNotification(
+  order: OrderEmailData,
+  options: AdminPaymentReminderOptions = {}
+) {
+  console.log("ORDER_EMAIL_DEBUG: Event=admin_payment_reminder", {
+    orderId: String(order._id),
+    userUID: order.userUID
+  })
+
+  const userProfile = await getUserEmail(String(order.userUID))
+  if (!userProfile.email) {
+    throw new Error("Selected order user does not have a valid email address")
+  }
+
+  await sendEmailStrict({
+    to: userProfile.email,
+    subject: `${appName}: Payment Reminder For Your Order`,
+    replyTo: options.adminEmail || undefined,
+    html: `
+      <h2>Payment reminder</h2>
+      <p>Hi ${escapeHtml(userProfile.name || "User")}, this is a reminder that your payment is still pending for the order below.</p>
+      <p><strong>Amount payable:</strong> ${formatMoney(order.finalPrice ?? order.estimatedPrice)}</p>
+      <p>Please complete the payment from your orders page so printing can begin without further delay.</p>
+      ${renderAdminNote(options.note)}
+      ${orderSummaryHtml(order)}
+    `
+  })
 }
