@@ -7,7 +7,13 @@ import { pusherServer } from "@/lib/pusher-server"
 import type { UploadApiErrorResponse, UploadApiResponse } from "cloudinary"
 import { sendOrderCreatedNotifications } from "@/lib/order-email"
 import { authenticateUserRequest } from "@/lib/user-auth"
-import { isAcceptedUploadFile, isPdfUploadFile, requiresManualPageCount } from "@/lib/upload-file"
+import {
+  getUploadLimitErrorMessage,
+  getUploadLimitInfo,
+  isAcceptedUploadFile,
+  isPdfUploadFile,
+  requiresManualPageCount
+} from "@/lib/upload-file"
 import cloudinary from "@/lib/cloudinary"
 import { calculateOrderPrice } from "@/lib/print-pricing"
 import { getPrintPricing } from "@/lib/print-pricing-store"
@@ -236,6 +242,17 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "File missing" },
         { status: 400 }
+      )
+    }
+
+    const uploadLimit = getUploadLimitInfo(file)
+
+    if (file.size > uploadLimit.maxBytes) {
+      return NextResponse.json(
+        {
+          error: getUploadLimitErrorMessage(file)
+        },
+        { status: 413 }
       )
     }
 

@@ -17,6 +17,11 @@ type AuthUploadHandlers = {
   onUploadProgress?: (progress: AuthUploadProgress) => void
 }
 
+type SafeJsonResponse<T> = {
+  data: T | null
+  rawText: string
+}
+
 async function getAuthenticatedUser() {
   let user = auth.currentUser
   if (!user) {
@@ -60,6 +65,29 @@ function parseResponseHeaders(rawHeaders: string) {
     })
 
   return headers
+}
+
+export async function readJsonResponseSafely<T>(response: Response): Promise<SafeJsonResponse<T>> {
+  const rawText = await response.text()
+
+  if (!rawText) {
+    return {
+      data: null,
+      rawText: ""
+    }
+  }
+
+  try {
+    return {
+      data: JSON.parse(rawText) as T,
+      rawText
+    }
+  } catch {
+    return {
+      data: null,
+      rawText
+    }
+  }
 }
 
 export async function authFetch(

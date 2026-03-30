@@ -16,6 +16,8 @@ export const ACCEPTED_UPLOAD_MIME_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 ] as const
 
+const IMAGE_UPLOAD_EXTENSIONS = [".png", ".jpg", ".jpeg"] as const
+const IMAGE_UPLOAD_MIME_TYPES = ["image/png", "image/jpeg", "image/jpg"] as const
 const MANUAL_PAGE_COUNT_EXTENSIONS = [".doc", ".docx"] as const
 const MANUAL_PAGE_COUNT_MIME_TYPES = [
   "application/msword",
@@ -23,6 +25,14 @@ const MANUAL_PAGE_COUNT_MIME_TYPES = [
 ] as const
 const PDF_UPLOAD_EXTENSIONS = [".pdf"] as const
 const PDF_UPLOAD_MIME_TYPES = ["application/pdf"] as const
+
+export const MAX_IMAGE_UPLOAD_SIZE_MB = 10
+export const MAX_PDF_UPLOAD_SIZE_MB = 10
+export const MAX_RAW_UPLOAD_SIZE_MB = 10
+
+export const MAX_IMAGE_UPLOAD_SIZE_BYTES = MAX_IMAGE_UPLOAD_SIZE_MB * 1024 * 1024
+export const MAX_PDF_UPLOAD_SIZE_BYTES = MAX_PDF_UPLOAD_SIZE_MB * 1024 * 1024
+export const MAX_RAW_UPLOAD_SIZE_BYTES = MAX_RAW_UPLOAD_SIZE_MB * 1024 * 1024
 
 export const UPLOAD_ACCEPT_ATTRIBUTE = ACCEPTED_UPLOAD_EXTENSIONS.join(",")
 
@@ -57,6 +67,17 @@ export function requiresManualPageCount(file: Pick<File, "name" | "type"> | null
   )
 }
 
+export function isImageUploadFile(file: Pick<File, "name" | "type"> | null) {
+  if (!file) return false
+
+  const extension = getFileExtension(file.name)
+
+  return (
+    IMAGE_UPLOAD_MIME_TYPES.includes(file.type as (typeof IMAGE_UPLOAD_MIME_TYPES)[number]) ||
+    IMAGE_UPLOAD_EXTENSIONS.includes(extension as (typeof IMAGE_UPLOAD_EXTENSIONS)[number])
+  )
+}
+
 export function isPdfUploadFile(file: Pick<File, "name" | "type"> | null) {
   if (!file) return false
 
@@ -66,4 +87,39 @@ export function isPdfUploadFile(file: Pick<File, "name" | "type"> | null) {
     PDF_UPLOAD_MIME_TYPES.includes(file.type as (typeof PDF_UPLOAD_MIME_TYPES)[number]) ||
     PDF_UPLOAD_EXTENSIONS.includes(extension as (typeof PDF_UPLOAD_EXTENSIONS)[number])
   )
+}
+
+type UploadLimitInfo = {
+  label: string
+  maxBytes: number
+  maxMb: number
+}
+
+export function getUploadLimitInfo(file: Pick<File, "name" | "type"> | null): UploadLimitInfo {
+  if (isImageUploadFile(file)) {
+    return {
+      label: "images",
+      maxBytes: MAX_IMAGE_UPLOAD_SIZE_BYTES,
+      maxMb: MAX_IMAGE_UPLOAD_SIZE_MB
+    }
+  }
+
+  if (isPdfUploadFile(file)) {
+    return {
+      label: "PDF files",
+      maxBytes: MAX_PDF_UPLOAD_SIZE_BYTES,
+      maxMb: MAX_PDF_UPLOAD_SIZE_MB
+    }
+  }
+
+  return {
+    label: "DOC, DOCX and raw files",
+    maxBytes: MAX_RAW_UPLOAD_SIZE_BYTES,
+    maxMb: MAX_RAW_UPLOAD_SIZE_MB
+  }
+}
+
+export function getUploadLimitErrorMessage(file: Pick<File, "name" | "type"> | null) {
+  const { label, maxMb } = getUploadLimitInfo(file)
+  return `Cloudinary free plan allows ${label} up to ${maxMb} MB.`
 }

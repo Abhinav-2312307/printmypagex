@@ -5,10 +5,15 @@ import { useEffect, useRef, useState, type FormEvent } from "react"
 import { auth } from "@/lib/firebase"
 import Navbar from "@/components/Navbar"
 import toast from "react-hot-toast"
-import { authFetch, authUploadWithProgress } from "@/lib/client-auth"
+import { authFetch, authUploadWithProgress, readJsonResponseSafely } from "@/lib/client-auth"
 import {
+  getUploadLimitErrorMessage,
   isAcceptedUploadFile,
   isPdfUploadFile,
+  getUploadLimitInfo,
+  MAX_IMAGE_UPLOAD_SIZE_MB,
+  MAX_PDF_UPLOAD_SIZE_MB,
+  MAX_RAW_UPLOAD_SIZE_MB,
   requiresManualPageCount,
   UPLOAD_ACCEPT_ATTRIBUTE
 } from "@/lib/upload-file"
@@ -279,6 +284,13 @@ export default function UserDashboard() {
       return
     }
 
+    const uploadLimit = getUploadLimitInfo(file)
+
+    if(file.size > uploadLimit.maxBytes){
+      toast.error(getUploadLimitErrorMessage(file))
+      return
+    }
+
     let manualPageCount = ""
 
     if(requiresManualPageCount(file)){
@@ -404,13 +416,18 @@ export default function UserDashboard() {
         }
       )
 
-      const data = await res.json() as UploadResponseData
+      const { data, rawText } = await readJsonResponseSafely<UploadResponseData>(res)
+      const uploadErrorMessage =
+        data?.error ||
+        (res.status === 413
+          ? getUploadLimitErrorMessage(file)
+          : rawText.trim() || "Upload failed")
 
-      if (!res.ok || data.error) {
-        if (data.requiresPdfPassword) {
+      if (!res.ok || !data || data.error) {
+        if (data?.requiresPdfPassword) {
           setNeedsPdfPassword(true)
         }
-        toast.error(data.error || "Upload failed")
+        toast.error(uploadErrorMessage)
         return
       }
 
@@ -789,7 +806,7 @@ setPageCount("")
 />
 
 <p className="text-xs text-gray-400">
-Accepted: PDF, DOC, DOCX, PNG, JPG, JPEG
+Limits on Cloudinary free plan: PNG/JPG/JPEG up to {MAX_IMAGE_UPLOAD_SIZE_MB} MB, PDF up to {MAX_PDF_UPLOAD_SIZE_MB} MB, DOC/DOCX up to {MAX_RAW_UPLOAD_SIZE_MB} MB
 </p>
 
 {showPdfPasswordField && (

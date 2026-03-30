@@ -1,10 +1,22 @@
 import "./globals.css"
 import type { Metadata } from "next"
+import { createRequire } from "node:module"
 import Script from "next/script"
 import { Toaster } from "react-hot-toast"
 import { ThemeProvider } from "next-themes"
 import { Analytics } from "@vercel/analytics/next"
-import { SpeedInsights } from "@vercel/speed-insights/next"
+
+const require = createRequire(import.meta.url)
+
+function getSpeedInsightsComponent() {
+  try {
+    return require("@vercel/speed-insights/next").SpeedInsights as React.ComponentType
+  } catch {
+    return null
+  }
+}
+
+const SpeedInsights = getSpeedInsightsComponent()
 
 export const metadata: Metadata = {
   title: "PrintMyPage",
@@ -57,7 +69,7 @@ export default function RootLayout({
           }}
         />
         <Analytics />
-        <SpeedInsights />
+        {SpeedInsights ? <SpeedInsights /> : null}
       </body>
     </html>
   )
