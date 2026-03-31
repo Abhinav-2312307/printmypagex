@@ -43,6 +43,42 @@ const OrderSchema = new mongoose.Schema({
     required:true
   },
 
+  storageURL:{
+    type:String,
+    default:""
+  },
+
+  fileOriginalName:{
+    type:String,
+    default:""
+  },
+
+  fileMimeType:{
+    type:String,
+    default:"application/octet-stream"
+  },
+
+  fileStorageEncoding:{
+    type:String,
+    enum:["none","gzip"],
+    default:"none"
+  },
+
+  fileAccessToken:{
+    type:String,
+    default:""
+  },
+
+  fileOriginalSizeBytes:{
+    type:Number,
+    default:0
+  },
+
+  fileStoredSizeBytes:{
+    type:Number,
+    default:0
+  },
+
   pdfPasswordRequired:{
     type:Boolean,
     default:false
@@ -182,6 +218,7 @@ OrderSchema.index({ supplierUID: 1, createdAt: -1 })
 OrderSchema.index({ status: 1, requestType: 1, supplierUID: 1, createdAt: -1 })
 OrderSchema.index({ razorpayOrderId: 1 })
 OrderSchema.index({ paymentStatus: 1, paidAt: -1 })
+OrderSchema.index({ fileAccessToken: 1 }, { unique: true, sparse: true })
 
 export default mongoose.models.Order ||
 mongoose.model("Order",OrderSchema)

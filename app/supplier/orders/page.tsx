@@ -118,7 +118,7 @@ if(!uid) return
 
 const channel = pusherClient.subscribe(`private-supplier-${uid}`)
 
-channel.bind("order-updated",(updatedOrder:SupplierOrderDetail)=>{
+const handleOrderUpdated = (updatedOrder:SupplierOrderDetail)=>{
 
 setOrders(prev =>
 prev.map(order =>
@@ -154,9 +154,13 @@ userProfile: updatedOrder.userProfile ?? prev.userProfile
 : prev
 )
 
-})
+void loadOrders(uid)
+}
+
+channel.bind("order-updated", handleOrderUpdated)
 
 return ()=>{
+channel.unbind("order-updated", handleOrderUpdated)
 pusherClient.unsubscribe(`private-supplier-${uid}`)
 }
 

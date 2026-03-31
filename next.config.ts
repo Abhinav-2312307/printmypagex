@@ -2,8 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   experimental: {
-    // Keep a little multipart overhead above Cloudinary's 10 MB free-plan file cap.
-    proxyClientMaxBodySize: "12mb"
+    // Allow up to 50 MB uploads plus multipart overhead before we compress/store them.
+    proxyClientMaxBodySize: "60mb"
   }
 };
 

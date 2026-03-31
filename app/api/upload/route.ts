@@ -1,16 +1,25 @@
 import { NextResponse } from "next/server"
 import { createRequire } from "node:module"
+import { randomUUID } from "node:crypto"
+import { gzip } from "node:zlib"
+import { promisify } from "node:util"
 import { connectDB } from "@/lib/mongodb"
 import Order from "@/models/Order"
+import Supplier from "@/models/Supplier"
 import User from "@/models/User"
 import { pusherServer } from "@/lib/pusher-server"
 import type { UploadApiErrorResponse, UploadApiResponse } from "cloudinary"
 import { sendOrderCreatedNotifications } from "@/lib/order-email"
 import { authenticateUserRequest } from "@/lib/user-auth"
 import {
+  buildOrderFileAccessPath,
+  CLOUDINARY_FREE_UPLOAD_SIZE_BYTES,
+  fitsCloudinaryFreeUploadLimit,
   getUploadLimitErrorMessage,
+  getUploadCompressionFailureMessage,
   getUploadLimitInfo,
   isAcceptedUploadFile,
+  isImageUploadFile,
   isPdfUploadFile,
   requiresManualPageCount
 } from "@/lib/upload-file"
@@ -28,6 +37,7 @@ import { recordActivity } from "@/lib/activity-log"
 export const runtime = "nodejs"
 
 const require = createRequire(import.meta.url)
+const gzipAsync = promisify(gzip)
 const PDFJS = require("pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js") as {
   getDocument: (source: { data: Uint8Array; password?: string }) => {
     promise: Promise<{
@@ -209,6 +219,84 @@ async function resolvePdfPageCount(buffer: Buffer, password: string): Promise<Pd
   return passwordAttempt
 }
 
+type StorageEncoding = "none" | "gzip"
+
+type PreparedCloudinaryPayload = {
+  accessURL: string
+  accessToken: string
+  originalSizeBytes: number
+  storageEncoding: StorageEncoding
+  storageURL: string
+  storedSizeBytes: number
+}
+
+function normalizeOriginalFileName(value: string, fallbackName: string) {
+  const normalized = value.trim()
+  return normalized || fallbackName.trim() || `file-${Date.now()}`
+}
+
+function buildStoredFileName(originalFileName: string, storageEncoding: StorageEncoding) {
+  return storageEncoding === "gzip" ? `${originalFileName}.gz` : originalFileName
+}
+
+async function prepareBufferForCloudinary(file: File, buffer: Buffer) {
+  if (fitsCloudinaryFreeUploadLimit(file) && buffer.byteLength <= CLOUDINARY_FREE_UPLOAD_SIZE_BYTES) {
+    return {
+      uploadBuffer: buffer,
+      storageEncoding: "none" as const
+    }
+  }
+
+  if (isImageUploadFile(file)) {
+    throw new Error(getUploadCompressionFailureMessage(file))
+  }
+
+  const gzippedBuffer = await gzipAsync(buffer, { level: 9 })
+
+  if (gzippedBuffer.byteLength > CLOUDINARY_FREE_UPLOAD_SIZE_BYTES) {
+    throw new Error(getUploadCompressionFailureMessage(file))
+  }
+
+  return {
+    uploadBuffer: gzippedBuffer,
+    storageEncoding: "gzip" as const
+  }
+}
+
+async function notifyRelevantSuppliers(order: {
+  _id: unknown
+  requestType?: string | null
+  supplierUID?: string | null
+}) {
+  const requestType = String(order.requestType || "global")
+  let targetSupplierUIDs: string[] = []
+
+  if (requestType === "specific" && order.supplierUID) {
+    targetSupplierUIDs = [String(order.supplierUID)]
+  } else {
+    const activeSuppliers = (await Supplier.find({
+      approved: true,
+      active: true
+    })
+      .select("firebaseUID")
+      .lean()) as Array<{ firebaseUID?: string }>
+
+    targetSupplierUIDs = activeSuppliers
+      .map((supplier) => String(supplier.firebaseUID || ""))
+      .filter(Boolean)
+  }
+
+  if (!targetSupplierUIDs.length) {
+    return
+  }
+
+  await Promise.all(
+    [...new Set(targetSupplierUIDs)].map((supplierUID) =>
+      pusherServer.trigger(`private-supplier-${supplierUID}`, "order-updated", order)
+    )
+  )
+}
+
 export async function POST(req: Request) {
 
   try {
@@ -229,6 +317,8 @@ export async function POST(req: Request) {
     const manualPageCountValue = String(formData.get("pageCount") || "").trim()
     const rawPdfPassword = formData.get("pdfPassword")
     const pdfPassword = typeof rawPdfPassword === "string" ? rawPdfPassword : ""
+    const originalFileNameInput = String(formData.get("originalFileName") || "").trim()
+    const originalFileTypeInput = String(formData.get("originalFileType") || "").trim()
 
     // NEW FIELDS
     const copiesValue = String(formData.get("copies") || "").trim()
@@ -460,13 +550,27 @@ export async function POST(req: Request) {
       spiralBinding: wantsSpiralBinding
     })
 
+    const sourceFileName = normalizeOriginalFileName(
+      originalFileNameInput,
+      file.name || `file-${Date.now()}`
+    )
+    const sourceFileType = originalFileTypeInput || file.type || "application/octet-stream"
+    const { storageEncoding, uploadBuffer } = await prepareBufferForCloudinary(file, buffer)
+    const deliveryFileName =
+      storageEncoding === "gzip"
+        ? sourceFileName
+        : normalizeOriginalFileName(file.name || "", sourceFileName)
+    const deliveryFileType =
+      storageEncoding === "gzip"
+        ? sourceFileType
+        : file.type || sourceFileType
+
     // Detect file type for Cloudinary
-    const isImage = file.type.startsWith("image/")
-    const resourceType = isImage ? "image" : "raw"
+    const resourceType = isImageUploadFile(file) ? "image" : "raw"
+    const storedFileName = buildStoredFileName(deliveryFileName, storageEncoding)
+    const accessToken = storageEncoding === "gzip" ? randomUUID().replace(/-/g, "") : ""
 
-    const originalFileName = (file.name || `file-${Date.now()}`).trim()
-
-    const sanitizedBaseName = originalFileName
+    const sanitizedBaseName = deliveryFileName
       .replace(/\.[^/.]+$/, "")
       .replace(/[^a-zA-Z0-9_-]/g, "-")
       .replace(/-+/g, "-")
@@ -481,7 +585,7 @@ export async function POST(req: Request) {
           resource_type: resourceType,
           folder: "printmypage",
           public_id: `${sanitizedBaseName}-${Date.now()}`,
-          filename_override: originalFileName
+          filename_override: storedFileName
         },
         (error, result) => {
           if (error) reject(error)
@@ -489,9 +593,18 @@ export async function POST(req: Request) {
         }
       )
 
-      uploadStream.end(buffer)
+      uploadStream.end(uploadBuffer)
 
     })
+
+    const preparedStorage: PreparedCloudinaryPayload = {
+      accessURL: storageEncoding === "gzip" ? buildOrderFileAccessPath(accessToken) : upload.secure_url,
+      accessToken,
+      originalSizeBytes: buffer.byteLength,
+      storageEncoding,
+      storageURL: upload.secure_url,
+      storedSizeBytes: uploadBuffer.byteLength
+    }
 
     // CREATE ORDER
     const order = await Order.create({
@@ -513,7 +626,21 @@ export async function POST(req: Request) {
 
       instruction: instruction || "",
 
-      fileURL: upload.secure_url,
+      fileURL: preparedStorage.accessURL,
+
+      storageURL: preparedStorage.storageURL,
+
+      fileOriginalName: deliveryFileName,
+
+      fileMimeType: deliveryFileType,
+
+      fileStorageEncoding: preparedStorage.storageEncoding,
+
+      fileAccessToken: preparedStorage.accessToken,
+
+      fileOriginalSizeBytes: preparedStorage.originalSizeBytes,
+
+      fileStoredSizeBytes: preparedStorage.storedSizeBytes,
 
       pdfPasswordRequired,
 
@@ -533,11 +660,7 @@ export async function POST(req: Request) {
 
     // Real-time broadcast
     try {
-      await pusherServer.trigger(
-        "orders",
-        "new-order",
-        order
-      )
+      await notifyRelevantSuppliers(order)
     } catch (pushError) {
       console.error("PUSHER ORDER CREATE ERROR:", pushError)
     }

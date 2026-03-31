@@ -11,12 +11,11 @@ import {
   isAcceptedUploadFile,
   isPdfUploadFile,
   getUploadLimitInfo,
-  MAX_IMAGE_UPLOAD_SIZE_MB,
-  MAX_PDF_UPLOAD_SIZE_MB,
-  MAX_RAW_UPLOAD_SIZE_MB,
+  UPLOAD_POLICY_HELPER_TEXT,
   requiresManualPageCount,
   UPLOAD_ACCEPT_ATTRIBUTE
 } from "@/lib/upload-file"
+import { prepareFileForUpload } from "@/lib/client-upload-preprocess"
 
 import {
   ResponsiveContainer,
@@ -324,43 +323,47 @@ export default function UserDashboard() {
       return
     }
 
-    setSubmitting(true)
-    const startedAt = Date.now()
-    let lastLoaded = 0
-    let lastMeasuredAt = startedAt
-    let lastSpeedBytesPerSecond: number | null = null
-    setUploadProgress({
-      stage: "uploading",
-      startedAt,
-      loaded: 0,
-      total: null,
-      speedBytesPerSecond: null
-    })
-
-    const formData=new FormData()
-
-    formData.append("file",file)
-    formData.append("printType",printType)
-    formData.append("firebaseUID",user.uid)
-
-    formData.append("requestType",requestType)
-    formData.append("supplier",supplier)
-    formData.append("copies", String(parsedCopies))
-
-    formData.append("alternatePhone",alternatePhone)
-    formData.append("duplex",String(duplex))
-    formData.append("spiralBinding",String(spiralBinding))
-    formData.append("instruction",instruction)
-
-    if(manualPageCount){
-      formData.append("pageCount",manualPageCount)
-    }
-
-    if(isPdfFile && pdfPassword){
-      formData.append("pdfPassword",pdfPassword)
-    }
-
     try {
+      const { file: uploadFile, wasCompressed } = await prepareFileForUpload(file)
+
+      setSubmitting(true)
+      const startedAt = Date.now()
+      let lastLoaded = 0
+      let lastMeasuredAt = startedAt
+      let lastSpeedBytesPerSecond: number | null = null
+      setUploadProgress({
+        stage: "uploading",
+        startedAt,
+        loaded: 0,
+        total: null,
+        speedBytesPerSecond: null
+      })
+
+      const formData = new FormData()
+
+      formData.append("file", uploadFile)
+      formData.append("originalFileName", file.name)
+      formData.append("originalFileType", file.type)
+      formData.append("printType", printType)
+      formData.append("firebaseUID", user.uid)
+
+      formData.append("requestType", requestType)
+      formData.append("supplier", supplier)
+      formData.append("copies", String(parsedCopies))
+
+      formData.append("alternatePhone", alternatePhone)
+      formData.append("duplex", String(duplex))
+      formData.append("spiralBinding", String(spiralBinding))
+      formData.append("instruction", instruction)
+
+      if (manualPageCount) {
+        formData.append("pageCount", manualPageCount)
+      }
+
+      if (isPdfFile && pdfPassword) {
+        formData.append("pdfPassword", pdfPassword)
+      }
+
       const res = await authUploadWithProgress(
         "/api/upload",
         {
@@ -431,7 +434,9 @@ export default function UserDashboard() {
         return
       }
 
-      toast.success(`Pages: ${data.pages} | Copies: ${data.copies ?? parsedCopies} | Estimated Price: ₹${data.estimatedPrice}`)
+      toast.success(
+        `${wasCompressed ? "Large image compressed automatically. " : ""}Pages: ${data.pages} | Copies: ${data.copies ?? parsedCopies} | Estimated Price: ₹${data.estimatedPrice}`
+      )
 
       const nextOrder = data.order
       if (nextOrder) {
@@ -806,7 +811,7 @@ setPageCount("")
 />
 
 <p className="text-xs text-gray-400">
-Limits on Cloudinary free plan: PNG/JPG/JPEG up to {MAX_IMAGE_UPLOAD_SIZE_MB} MB, PDF up to {MAX_PDF_UPLOAD_SIZE_MB} MB, DOC/DOCX up to {MAX_RAW_UPLOAD_SIZE_MB} MB
+{UPLOAD_POLICY_HELPER_TEXT}
 </p>
 
 {showPdfPasswordField && (

@@ -26,15 +26,23 @@ const MANUAL_PAGE_COUNT_MIME_TYPES = [
 const PDF_UPLOAD_EXTENSIONS = [".pdf"] as const
 const PDF_UPLOAD_MIME_TYPES = ["application/pdf"] as const
 
-export const MAX_IMAGE_UPLOAD_SIZE_MB = 10
-export const MAX_PDF_UPLOAD_SIZE_MB = 10
-export const MAX_RAW_UPLOAD_SIZE_MB = 10
+export const CLOUDINARY_FREE_UPLOAD_SIZE_MB = 10
+export const MAX_IMAGE_UPLOAD_SIZE_MB = 50
+export const MAX_PDF_UPLOAD_SIZE_MB = 50
+export const MAX_RAW_UPLOAD_SIZE_MB = 50
+export const SAFE_CLOUDINARY_UPLOAD_TARGET_MB = 9.5
 
 export const MAX_IMAGE_UPLOAD_SIZE_BYTES = MAX_IMAGE_UPLOAD_SIZE_MB * 1024 * 1024
 export const MAX_PDF_UPLOAD_SIZE_BYTES = MAX_PDF_UPLOAD_SIZE_MB * 1024 * 1024
 export const MAX_RAW_UPLOAD_SIZE_BYTES = MAX_RAW_UPLOAD_SIZE_MB * 1024 * 1024
+export const CLOUDINARY_FREE_UPLOAD_SIZE_BYTES = CLOUDINARY_FREE_UPLOAD_SIZE_MB * 1024 * 1024
+export const SAFE_CLOUDINARY_UPLOAD_TARGET_BYTES =
+  Math.floor(SAFE_CLOUDINARY_UPLOAD_TARGET_MB * 1024 * 1024)
 
 export const UPLOAD_ACCEPT_ATTRIBUTE = ACCEPTED_UPLOAD_EXTENSIONS.join(",")
+export const UPLOAD_POLICY_HELPER_TEXT =
+  `Upload PDF, DOC, DOCX, PNG, JPG or JPEG files up to ${MAX_PDF_UPLOAD_SIZE_MB} MB. ` +
+  `Files above ${CLOUDINARY_FREE_UPLOAD_SIZE_MB} MB are auto-compressed when possible and rejected if they still cannot fit below ${CLOUDINARY_FREE_UPLOAD_SIZE_MB} MB for Cloudinary.`
 
 export function getFileExtension(fileName: string) {
   const normalized = fileName.trim().toLowerCase()
@@ -121,5 +129,24 @@ export function getUploadLimitInfo(file: Pick<File, "name" | "type"> | null): Up
 
 export function getUploadLimitErrorMessage(file: Pick<File, "name" | "type"> | null) {
   const { label, maxMb } = getUploadLimitInfo(file)
-  return `Cloudinary free plan allows ${label} up to ${maxMb} MB.`
+  return `We accept ${label} up to ${maxMb} MB. Files above ${CLOUDINARY_FREE_UPLOAD_SIZE_MB} MB are only accepted when we can compress them below ${CLOUDINARY_FREE_UPLOAD_SIZE_MB} MB for Cloudinary.`
+}
+
+export function getUploadCompressionFailureMessage(file: Pick<File, "name" | "type"> | null) {
+  const subject = isImageUploadFile(file)
+    ? "image"
+    : isPdfUploadFile(file)
+      ? "PDF"
+      : "document"
+
+  return `This ${subject} is above ${CLOUDINARY_FREE_UPLOAD_SIZE_MB} MB, and we could not shrink it enough for Cloudinary's free-plan limit. Please upload a smaller export or a lower-quality version.`
+}
+
+export function fitsCloudinaryFreeUploadLimit(file: Pick<File, "size"> | null) {
+  if (!file) return false
+  return Number(file.size || 0) <= CLOUDINARY_FREE_UPLOAD_SIZE_BYTES
+}
+
+export function buildOrderFileAccessPath(token: string) {
+  return `/api/orders/file/${encodeURIComponent(token)}`
 }
