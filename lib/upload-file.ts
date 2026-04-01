@@ -42,7 +42,7 @@ export const SAFE_CLOUDINARY_UPLOAD_TARGET_BYTES =
 export const UPLOAD_ACCEPT_ATTRIBUTE = ACCEPTED_UPLOAD_EXTENSIONS.join(",")
 export const UPLOAD_POLICY_HELPER_TEXT =
   `Upload PDF, DOC, DOCX, PNG, JPG or JPEG files up to ${MAX_PDF_UPLOAD_SIZE_MB} MB. ` +
-  `Files above ${CLOUDINARY_FREE_UPLOAD_SIZE_MB} MB are auto-compressed when possible and rejected if they still cannot fit below ${CLOUDINARY_FREE_UPLOAD_SIZE_MB} MB for Cloudinary.`
+  `Files above ${CLOUDINARY_FREE_UPLOAD_SIZE_MB} MB use our lossless large-file storage path and are restored to their original bytes when opened.`
 
 export function getFileExtension(fileName: string) {
   const normalized = fileName.trim().toLowerCase()
@@ -129,7 +129,7 @@ export function getUploadLimitInfo(file: Pick<File, "name" | "type"> | null): Up
 
 export function getUploadLimitErrorMessage(file: Pick<File, "name" | "type"> | null) {
   const { label, maxMb } = getUploadLimitInfo(file)
-  return `We accept ${label} up to ${maxMb} MB. Files above ${CLOUDINARY_FREE_UPLOAD_SIZE_MB} MB are only accepted when we can compress them below ${CLOUDINARY_FREE_UPLOAD_SIZE_MB} MB for Cloudinary.`
+  return `We accept ${label} up to ${maxMb} MB.`
 }
 
 export function getUploadCompressionFailureMessage(file: Pick<File, "name" | "type"> | null) {
@@ -139,7 +139,7 @@ export function getUploadCompressionFailureMessage(file: Pick<File, "name" | "ty
       ? "PDF"
       : "document"
 
-  return `This ${subject} is above ${CLOUDINARY_FREE_UPLOAD_SIZE_MB} MB, and we could not shrink it enough for Cloudinary's free-plan limit. Please upload a smaller export or a lower-quality version.`
+  return `This ${subject} could not be prepared for Cloudinary storage. Please upload a smaller file and try again.`
 }
 
 export function fitsCloudinaryFreeUploadLimit(file: Pick<File, "size"> | null) {

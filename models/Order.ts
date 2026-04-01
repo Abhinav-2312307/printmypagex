@@ -48,6 +48,11 @@ const OrderSchema = new mongoose.Schema({
     default:""
   },
 
+  storageChunkURLs:{
+    type:[String],
+    default:[]
+  },
+
   fileOriginalName:{
     type:String,
     default:""
@@ -66,7 +71,7 @@ const OrderSchema = new mongoose.Schema({
 
   fileAccessToken:{
     type:String,
-    default:""
+    default:undefined
   },
 
   fileOriginalSizeBytes:{
@@ -219,6 +224,18 @@ OrderSchema.index({ status: 1, requestType: 1, supplierUID: 1, createdAt: -1 })
 OrderSchema.index({ razorpayOrderId: 1 })
 OrderSchema.index({ paymentStatus: 1, paidAt: -1 })
 OrderSchema.index({ fileAccessToken: 1 }, { unique: true, sparse: true })
+
+const existingOrderModel = mongoose.models.Order
+
+if (
+  existingOrderModel &&
+  (
+    !existingOrderModel.schema.path("storageChunkURLs") ||
+    !existingOrderModel.schema.path("fileAccessToken")
+  )
+) {
+  mongoose.deleteModel("Order")
+}
 
 export default mongoose.models.Order ||
 mongoose.model("Order",OrderSchema)

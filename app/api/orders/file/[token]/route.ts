@@ -3,6 +3,7 @@ import { gunzip } from "node:zlib"
 import { promisify } from "node:util"
 import { connectDB } from "@/lib/mongodb"
 import Order from "@/models/Order"
+import { buildOrderFileAccessPath } from "@/lib/upload-file"
 
 export const runtime = "nodejs"
 
@@ -32,32 +33,50 @@ export async function GET(
 
     await connectDB()
 
-    const order = await Order.findOne({ fileAccessToken: token })
-      .select("storageURL fileStorageEncoding fileOriginalName fileMimeType")
-      .lean<{
-        storageURL?: string
-        fileStorageEncoding?: "none" | "gzip"
-        fileOriginalName?: string
-        fileMimeType?: string
-      } | null>()
+    const orderQuery = Order.findOne({
+      $or: [
+        { fileAccessToken: token },
+        { fileURL: buildOrderFileAccessPath(token) }
+      ]
+    })
+      .select("storageURL storageChunkURLs fileStorageEncoding fileOriginalName fileMimeType")
 
-    if (!order?.storageURL) {
+    const order = await orderQuery.lean<{
+      storageURL?: string
+      storageChunkURLs?: string[]
+      fileStorageEncoding?: "none" | "gzip"
+      fileOriginalName?: string
+      fileMimeType?: string
+    } | null>()
+
+    const sourceUrls = Array.isArray(order?.storageChunkURLs) && order.storageChunkURLs.length
+      ? order.storageChunkURLs
+      : order?.storageURL
+        ? [order.storageURL]
+        : []
+
+    if (!sourceUrls.length) {
       return NextResponse.json(
         { success: false, message: "File not found" },
         { status: 404 }
       )
     }
 
-    const upstreamResponse = await fetch(order.storageURL, { cache: "no-store" })
+    const upstreamResponses = await Promise.all(
+      sourceUrls.map((sourceUrl) => fetch(sourceUrl, { cache: "no-store" }))
+    )
 
-    if (!upstreamResponse.ok) {
+    if (upstreamResponses.some((response) => !response.ok)) {
       return NextResponse.json(
         { success: false, message: "Failed to fetch file from storage" },
         { status: 502 }
       )
     }
 
-    const upstreamBuffer = Buffer.from(await upstreamResponse.arrayBuffer())
+    const upstreamBuffers = await Promise.all(
+      upstreamResponses.map(async (response) => Buffer.from(await response.arrayBuffer()))
+    )
+    const upstreamBuffer = Buffer.concat(upstreamBuffers)
     const outputBuffer =
       order.fileStorageEncoding === "gzip"
         ? await gunzipAsync(upstreamBuffer)
@@ -70,7 +89,7 @@ export async function GET(
         "Content-Length": String(outputBuffer.byteLength),
         "Content-Type":
           order.fileMimeType ||
-          upstreamResponse.headers.get("content-type") ||
+          upstreamResponses[0]?.headers.get("content-type") ||
           "application/octet-stream"
       }
     })

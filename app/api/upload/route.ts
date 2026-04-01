@@ -14,9 +14,9 @@ import { authenticateUserRequest } from "@/lib/user-auth"
 import {
   buildOrderFileAccessPath,
   CLOUDINARY_FREE_UPLOAD_SIZE_BYTES,
+  SAFE_CLOUDINARY_UPLOAD_TARGET_BYTES,
   fitsCloudinaryFreeUploadLimit,
   getUploadLimitErrorMessage,
-  getUploadCompressionFailureMessage,
   getUploadLimitInfo,
   isAcceptedUploadFile,
   isImageUploadFile,
@@ -226,8 +226,14 @@ type PreparedCloudinaryPayload = {
   accessToken: string
   originalSizeBytes: number
   storageEncoding: StorageEncoding
+  storageChunkURLs: string[]
   storageURL: string
   storedSizeBytes: number
+}
+
+type PreparedStoragePlan = {
+  buffers: Buffer[]
+  storageEncoding: StorageEncoding
 }
 
 function normalizeOriginalFileName(value: string, fallbackName: string) {
@@ -239,26 +245,37 @@ function buildStoredFileName(originalFileName: string, storageEncoding: StorageE
   return storageEncoding === "gzip" ? `${originalFileName}.gz` : originalFileName
 }
 
-async function prepareBufferForCloudinary(file: File, buffer: Buffer) {
-  if (fitsCloudinaryFreeUploadLimit(file) && buffer.byteLength <= CLOUDINARY_FREE_UPLOAD_SIZE_BYTES) {
-    return {
-      uploadBuffer: buffer,
-      storageEncoding: "none" as const
-    }
+function splitBufferIntoChunks(buffer: Buffer, chunkSize: number) {
+  const chunks: Buffer[] = []
+
+  for (let offset = 0; offset < buffer.byteLength; offset += chunkSize) {
+    chunks.push(buffer.subarray(offset, Math.min(offset + chunkSize, buffer.byteLength)))
   }
 
-  if (isImageUploadFile(file)) {
-    throw new Error(getUploadCompressionFailureMessage(file))
+  return chunks
+}
+
+async function prepareBuffersForCloudinary(file: File, buffer: Buffer): Promise<PreparedStoragePlan> {
+  if (fitsCloudinaryFreeUploadLimit(file) && buffer.byteLength <= CLOUDINARY_FREE_UPLOAD_SIZE_BYTES) {
+    return {
+      buffers: [buffer],
+      storageEncoding: "none" as const
+    }
   }
 
   const gzippedBuffer = await gzipAsync(buffer, { level: 9 })
 
   if (gzippedBuffer.byteLength > CLOUDINARY_FREE_UPLOAD_SIZE_BYTES) {
-    throw new Error(getUploadCompressionFailureMessage(file))
+    const preferredBuffer = gzippedBuffer.byteLength < buffer.byteLength ? gzippedBuffer : buffer
+
+    return {
+      buffers: splitBufferIntoChunks(preferredBuffer, SAFE_CLOUDINARY_UPLOAD_TARGET_BYTES),
+      storageEncoding: preferredBuffer === gzippedBuffer ? "gzip" : "none"
+    }
   }
 
   return {
-    uploadBuffer: gzippedBuffer,
+    buffers: [gzippedBuffer],
     storageEncoding: "gzip" as const
   }
 }
@@ -555,7 +572,7 @@ export async function POST(req: Request) {
       file.name || `file-${Date.now()}`
     )
     const sourceFileType = originalFileTypeInput || file.type || "application/octet-stream"
-    const { storageEncoding, uploadBuffer } = await prepareBufferForCloudinary(file, buffer)
+    const { buffers: uploadBuffers, storageEncoding } = await prepareBuffersForCloudinary(file, buffer)
     const deliveryFileName =
       storageEncoding === "gzip"
         ? sourceFileName
@@ -564,11 +581,15 @@ export async function POST(req: Request) {
       storageEncoding === "gzip"
         ? sourceFileType
         : file.type || sourceFileType
+    const usesProxyAccess = storageEncoding === "gzip" || uploadBuffers.length > 1
 
     // Detect file type for Cloudinary
-    const resourceType = isImageUploadFile(file) ? "image" : "raw"
+    const resourceType =
+      !usesProxyAccess && isImageUploadFile(file)
+        ? "image"
+        : "raw"
     const storedFileName = buildStoredFileName(deliveryFileName, storageEncoding)
-    const accessToken = storageEncoding === "gzip" ? randomUUID().replace(/-/g, "") : ""
+    const accessToken = usesProxyAccess ? randomUUID().replace(/-/g, "") : ""
 
     const sanitizedBaseName = deliveryFileName
       .replace(/\.[^/.]+$/, "")
@@ -576,34 +597,47 @@ export async function POST(req: Request) {
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "")
       .slice(0, 60) || "file"
+    const uploadTimestamp = Date.now()
 
     // Upload file to Cloudinary
-    const upload = await new Promise<UploadApiResponse>((resolve, reject) => {
+    const uploads = await Promise.all(
+      uploadBuffers.map(
+        (uploadBuffer, index) =>
+          new Promise<UploadApiResponse>((resolve, reject) => {
+            const partLabel =
+              uploadBuffers.length > 1
+                ? `-part-${String(index + 1).padStart(2, "0")}`
+                : ""
 
-      const uploadStream = cloudinary.uploader.upload_stream(
-        {
-          resource_type: resourceType,
-          folder: "printmypage",
-          public_id: `${sanitizedBaseName}-${Date.now()}`,
-          filename_override: storedFileName
-        },
-        (error, result) => {
-          if (error) reject(error)
-          else resolve(result!)
-        }
+            const uploadStream = cloudinary.uploader.upload_stream(
+              {
+                resource_type: resourceType,
+                folder: "printmypage",
+                public_id: `${sanitizedBaseName}-${uploadTimestamp}${partLabel}`,
+                filename_override:
+                  uploadBuffers.length > 1
+                    ? `${storedFileName}.part-${index + 1}`
+                    : storedFileName
+              },
+              (error, result) => {
+                if (error) reject(error)
+                else resolve(result!)
+              }
+            )
+
+            uploadStream.end(uploadBuffer)
+          })
       )
-
-      uploadStream.end(uploadBuffer)
-
-    })
+    )
 
     const preparedStorage: PreparedCloudinaryPayload = {
-      accessURL: storageEncoding === "gzip" ? buildOrderFileAccessPath(accessToken) : upload.secure_url,
+      accessURL: usesProxyAccess ? buildOrderFileAccessPath(accessToken) : uploads[0].secure_url,
       accessToken,
       originalSizeBytes: buffer.byteLength,
       storageEncoding,
-      storageURL: upload.secure_url,
-      storedSizeBytes: uploadBuffer.byteLength
+      storageChunkURLs: uploadBuffers.length > 1 ? uploads.map((upload) => upload.secure_url) : [],
+      storageURL: uploadBuffers.length > 1 ? "" : uploads[0].secure_url,
+      storedSizeBytes: uploadBuffers.reduce((total, uploadBuffer) => total + uploadBuffer.byteLength, 0)
     }
 
     // CREATE ORDER
@@ -628,6 +662,8 @@ export async function POST(req: Request) {
 
       fileURL: preparedStorage.accessURL,
 
+      storageChunkURLs: preparedStorage.storageChunkURLs,
+
       storageURL: preparedStorage.storageURL,
 
       fileOriginalName: deliveryFileName,
@@ -636,11 +672,15 @@ export async function POST(req: Request) {
 
       fileStorageEncoding: preparedStorage.storageEncoding,
 
-      fileAccessToken: preparedStorage.accessToken,
-
       fileOriginalSizeBytes: preparedStorage.originalSizeBytes,
 
       fileStoredSizeBytes: preparedStorage.storedSizeBytes,
+
+      ...(preparedStorage.accessToken
+        ? {
+            fileAccessToken: preparedStorage.accessToken
+          }
+        : {}),
 
       pdfPasswordRequired,
 
