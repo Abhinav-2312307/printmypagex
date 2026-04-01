@@ -49,9 +49,16 @@ export async function GET(
       fileMimeType?: string
     } | null>()
 
-    const sourceUrls = Array.isArray(order?.storageChunkURLs) && order.storageChunkURLs.length
+    if (!order) {
+      return NextResponse.json(
+        { success: false, message: "File not found" },
+        { status: 404 }
+      )
+    }
+
+    const sourceUrls = Array.isArray(order.storageChunkURLs) && order.storageChunkURLs.length
       ? order.storageChunkURLs
-      : order?.storageURL
+      : order.storageURL
         ? [order.storageURL]
         : []
 
