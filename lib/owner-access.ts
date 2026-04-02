@@ -1,6 +1,7 @@
 const DEFAULT_OWNER_EMAILS = [
   "abhinavrishi32@gmail.com",
-  "abhinav1the2great3@gmail.com"
+  "abhinav1the2great3@gmail.com",
+  "2k23.cs2312635@gmail.com"
 ]
 
 function parseEmailList(value: string) {
