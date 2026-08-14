@@ -32,6 +32,7 @@ const ORDER_SELECT_FIELDS = [
   "estimatedPrice",
   "finalPrice",
   "fileURL",
+  "files",
   "pdfPasswordRequired",
   "pdfPassword",
   "duplex",

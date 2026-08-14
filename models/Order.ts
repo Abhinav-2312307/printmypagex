@@ -40,7 +40,7 @@ const OrderSchema = new mongoose.Schema({
 
   fileURL:{
     type:String,
-    required:true
+    default:""
   },
 
   storageURL:{
@@ -175,6 +175,7 @@ const OrderSchema = new mongoose.Schema({
   status:{
     type:String,
     enum:[
+      "uploading",
       "pending",
       "accepted",
       "awaiting_payment",
@@ -211,6 +212,64 @@ const OrderSchema = new mongoose.Schema({
     }
   ],
 
+  files:[
+    {
+      fileURL:{
+        type:String,
+        default:""
+      },
+      storageURL:{
+        type:String,
+        default:""
+      },
+      storageChunkURLs:{
+        type:[String],
+        default:[]
+      },
+      fileOriginalName:{
+        type:String,
+        default:""
+      },
+      fileMimeType:{
+        type:String,
+        default:"application/octet-stream"
+      },
+      fileStorageEncoding:{
+        type:String,
+        enum:["none","gzip"],
+        default:"none"
+      },
+      fileAccessToken:{
+        type:String,
+        default:undefined
+      },
+      fileOriginalSizeBytes:{
+        type:Number,
+        default:0
+      },
+      fileStoredSizeBytes:{
+        type:Number,
+        default:0
+      },
+      pdfPasswordRequired:{
+        type:Boolean,
+        default:false
+      },
+      pdfPassword:{
+        type:String,
+        default:""
+      },
+      pages:{
+        type:Number,
+        required:true
+      },
+      verifiedPages:{
+        type:Number,
+        default:null
+      }
+    }
+  ],
+
   createdAt:{
     type:Date,
     default:Date.now
@@ -231,7 +290,8 @@ if (
   existingOrderModel &&
   (
     !existingOrderModel.schema.path("storageChunkURLs") ||
-    !existingOrderModel.schema.path("fileAccessToken")
+    !existingOrderModel.schema.path("fileAccessToken") ||
+    !existingOrderModel.schema.path("files")
   )
 ) {
   mongoose.deleteModel("Order")

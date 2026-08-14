@@ -11,6 +11,14 @@ const PlatformSettingsSchema = new mongoose.Schema(
     landingFeedbackVisible: {
       type: Boolean,
       default: true
+    },
+    pendingAutoCancelHours: {
+      type: Number,
+      default: 72
+    },
+    paymentAutoCancelHours: {
+      type: Number,
+      default: 24
     }
   },
   {

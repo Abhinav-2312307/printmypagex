@@ -23,6 +23,11 @@ type OrderEmailData = {
   estimatedPrice?: number | null
   finalPrice?: number | null
   spiralBinding?: boolean | null
+  files?: Array<{
+    fileOriginalName?: string
+    pages?: number
+    verifiedPages?: number | null
+  }>
 }
 
 type UserRecord = {
@@ -105,10 +110,23 @@ function renderAdminNote(note?: string) {
 function orderSummaryHtml(order: OrderEmailData) {
   const pagesPerCopy = Number(order.verifiedPages ?? order.pages ?? 0)
   const copies = normalizeCopies(order.copies)
+  const hasMultipleFiles = Array.isArray(order.files) && order.files.length > 1
+
+  let filesSection = ""
+  if (hasMultipleFiles) {
+    const fileItems = order.files!.map((f, i) =>
+      `<li>${escapeHtml(f.fileOriginalName || `File ${i + 1}`)}: ${f.verifiedPages ?? f.pages ?? 0} pages</li>`
+    ).join("")
+    filesSection = `
+      <p><strong>Files (${order.files!.length}):</strong></p>
+      <ul style="margin:4px 0 8px 16px;padding:0;">${fileItems}</ul>
+    `
+  }
 
   return `
     <p><strong>Order ID:</strong> ${String(order._id)}</p>
     <p><strong>Print Type:</strong> ${(order.printType || "bw").toUpperCase()}</p>
+    ${filesSection}
     <p><strong>Pages Per Copy:</strong> ${pagesPerCopy || "N/A"}</p>
     <p><strong>Copies:</strong> ${copies}</p>
     <p><strong>Total Print Pages:</strong> ${getTotalPrintablePages(pagesPerCopy, copies)}</p>

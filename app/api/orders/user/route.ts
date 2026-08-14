@@ -35,6 +35,7 @@ const ORDER_SELECT_FIELDS = [
   "estimatedPrice",
   "finalPrice",
   "fileURL",
+  "files",
   "pdfPasswordRequired",
   "pdfPassword",
   "duplex",
@@ -45,7 +46,8 @@ const ORDER_SELECT_FIELDS = [
   "createdAt",
   "acceptedAt",
   "paidAt",
-  "deliveredAt"
+  "deliveredAt",
+  "rejectionReason"
 ].join(" ")
 
 export async function GET(req: Request) {

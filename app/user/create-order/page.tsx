@@ -13,7 +13,8 @@ import {
   getUploadLimitInfo,
   UPLOAD_POLICY_HELPER_TEXT,
   requiresManualPageCount,
-  UPLOAD_ACCEPT_ATTRIBUTE
+  UPLOAD_ACCEPT_ATTRIBUTE,
+  MAX_FILES_PER_ORDER
 } from "@/lib/upload-file"
 import { prepareFileForUpload } from "@/lib/client-upload-preprocess"
 import SupplierSelector, { type SupplierSelectorItem } from "@/components/SupplierSelector"
@@ -23,6 +24,15 @@ import {
   PRINT_TYPE_KEYS
 } from "@/lib/print-pricing"
 import { usePrintPricing } from "@/lib/use-print-pricing"
+
+type FileEntry = {
+  id: string
+  file: File
+  pageCount: string
+  pdfPassword: string
+  needsPdfPassword: boolean
+  detectedPages: number | null
+}
 
 type UploadProgressState = {
   stage: "uploading" | "processing"
@@ -39,6 +49,11 @@ type UploadResponseData = {
   estimatedPrice?: number
   pages?: number
   requiresPdfPassword?: boolean
+  requiresPageCount?: boolean
+  fileIndex?: number
+  fileCount?: number
+  filesDetail?: Array<{ name: string; pages: number }>
+  orderId?: string
 }
 
 function formatBytes(bytes: number) {
@@ -67,16 +82,27 @@ function getUploadProgressPercent(progress: UploadProgressState | null) {
   return Math.min(100, Math.round((progress.loaded / progress.total) * 100))
 }
 
+function getFileTypeLabel(file: File): string {
+  if (isPdfUploadFile(file)) return "PDF"
+  if (requiresManualPageCount(file)) return "DOC"
+  return "IMG"
+}
+
+function getFileTypeBadgeColor(file: File): string {
+  if (isPdfUploadFile(file)) return "bg-rose-500/20 text-rose-400 border-rose-500/30"
+  if (requiresManualPageCount(file)) return "bg-blue-500/20 text-blue-400 border-blue-500/30"
+  return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+}
+
+let fileIdCounter = 0
+
 export default function CreateOrderPage() {
 
-  const [file, setFile] = useState<File | null>(null)
+  const [fileEntries, setFileEntries] = useState<FileEntry[]>([])
   const [printType, setPrintType] = useState("bw")
   const [requestType, setRequestType] = useState("global")
   const [supplier, setSupplier] = useState("")
-  const [pageCount, setPageCount] = useState("")
   const [copies, setCopies] = useState("1")
-  const [pdfPassword, setPdfPassword] = useState("")
-  const [needsPdfPassword, setNeedsPdfPassword] = useState(false)
   const [spiralBinding, setSpiralBinding] = useState(false)
   const [instruction, setInstruction] = useState("")
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -108,8 +134,6 @@ export default function CreateOrderPage() {
   }, [uploadStartedAt])
 
   const uploadPercent = getUploadProgressPercent(uploadProgress)
-  const isPdfFile = isPdfUploadFile(file)
-  const showPdfPasswordField = isPdfFile && (needsPdfPassword || pdfPassword.length > 0)
 
   useEffect(() => {
     let active = true
@@ -146,43 +170,85 @@ export default function CreateOrderPage() {
     }
   }
 
+  const handleFilesSelected = (selectedFiles: FileList | null) => {
+    if (!selectedFiles || selectedFiles.length === 0) return
+
+    const newFiles = Array.from(selectedFiles)
+    const currentCount = fileEntries.length
+    const available = MAX_FILES_PER_ORDER - currentCount
+    const filesToAdd = newFiles.slice(0, available)
+
+    if (newFiles.length > available) {
+      toast.error(`You can upload up to ${MAX_FILES_PER_ORDER} files. ${newFiles.length - available} file(s) were skipped.`)
+    }
+
+    const newEntries: FileEntry[] = filesToAdd
+      .filter((file) => {
+        if (!isAcceptedUploadFile(file)) {
+          toast.error(`"${file.name}" is not a supported file type.`)
+          return false
+        }
+        const limit = getUploadLimitInfo(file)
+        if (file.size > limit.maxBytes) {
+          toast.error(`"${file.name}": ${getUploadLimitErrorMessage(file)}`)
+          return false
+        }
+        return true
+      })
+      .map((file) => ({
+        id: `file-${++fileIdCounter}`,
+        file,
+        pageCount: "",
+        pdfPassword: "",
+        needsPdfPassword: false,
+        detectedPages: null
+      }))
+
+    setFileEntries((prev) => [...prev, ...newEntries])
+
+    // Reset the input so the same file can be re-selected if removed
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+
+  const removeFileEntry = (id: string) => {
+    setFileEntries((prev) => prev.filter((entry) => entry.id !== id))
+  }
+
+  const updateFileEntry = (id: string, updates: Partial<FileEntry>) => {
+    setFileEntries((prev) =>
+      prev.map((entry) =>
+        entry.id === id ? { ...entry, ...updates } : entry
+      )
+    )
+  }
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
 
     e.preventDefault()
 
-    if (!file) {
-      toast.error("Nice try. But invisible files are not supported yet 😌")
+    if (fileEntries.length === 0) {
+      toast.error("Add at least one file to create an order 📁")
       return
     }
 
-    if (!isAcceptedUploadFile(file)) {
-      toast.error("Upload PDF, DOC, DOCX, PNG, JPG or JPEG files only.")
-      return
-    }
+    // Validate each file entry
+    for (let i = 0; i < fileEntries.length; i++) {
+      const entry = fileEntries[i]
 
-    const uploadLimit = getUploadLimitInfo(file)
-
-    if (file.size > uploadLimit.maxBytes) {
-      toast.error(getUploadLimitErrorMessage(file))
-      return
-    }
-
-    let manualPageCount = ""
-
-    if (requiresManualPageCount(file)) {
-      const parsedPageCount = Number.parseInt(pageCount, 10)
-
-      if (!Number.isInteger(parsedPageCount) || parsedPageCount < 1) {
-        toast.error("Enter a valid page count for DOC or DOCX files.")
-        return
+      if (requiresManualPageCount(entry.file)) {
+        const parsedPageCount = Number.parseInt(entry.pageCount, 10)
+        if (!Number.isInteger(parsedPageCount) || parsedPageCount < 1) {
+          toast.error(`File ${i + 1} ("${entry.file.name}"): Enter a valid page count.`)
+          return
+        }
       }
 
-      manualPageCount = String(parsedPageCount)
-    }
-
-    if (isPdfFile && needsPdfPassword && !pdfPassword) {
-      toast.error("Enter the PDF password to continue with this locked file.")
-      return
+      if (isPdfUploadFile(entry.file) && entry.needsPdfPassword && !entry.pdfPassword) {
+        toast.error(`File ${i + 1} ("${entry.file.name}"): Enter the PDF password to continue.`)
+        return
+      }
     }
 
     const parsedCopies = Number(copies)
@@ -202,13 +268,10 @@ export default function CreateOrderPage() {
     }
 
     try {
-      const { file: uploadFile, wasCompressed } = await prepareFileForUpload(file)
-
       setSubmitting(true)
       const startedAt = Date.now()
-      let lastLoaded = 0
-      let lastMeasuredAt = startedAt
-      let lastSpeedBytesPerSecond: number | null = null
+      let totalLoaded = 0
+      
       setUploadProgress({
         stage: "uploading",
         startedAt,
@@ -217,107 +280,131 @@ export default function CreateOrderPage() {
         speedBytesPerSecond: null
       })
 
-      const formData = new FormData()
       const fallbackEmail = user.email || user.providerData?.[0]?.email || ""
+      let currentOrderId = ""
+      let finalData: UploadResponseData | null = null
 
-      formData.append("file", uploadFile)
-      formData.append("originalFileName", file.name)
-      formData.append("originalFileType", file.type)
-      formData.append("printType", printType)
-      formData.append("firebaseUID", user.uid)
-      formData.append("userEmail", fallbackEmail)
-      formData.append("requestType", requestType)
-      formData.append("supplier", supplier)
-      formData.append("copies", String(parsedCopies))
-      formData.append("spiralBinding", String(spiralBinding))
-      formData.append("instruction", instruction.trim())
+      for (let i = 0; i < fileEntries.length; i++) {
+        const entry = fileEntries[i]
+        const isFirstFile = i === 0
+        const isLastFile = i === fileEntries.length - 1
+        
+        let lastFileLoaded = 0
+        let lastMeasuredAt = Date.now()
+        let lastSpeedBytesPerSecond: number | null = null
 
-      if (manualPageCount) {
-        formData.append("pageCount", manualPageCount)
-      }
+        const formData = new FormData()
+        const { file: uploadFile } = await prepareFileForUpload(entry.file)
+        
+        formData.append("files", uploadFile)
+        formData.append("originalFileNames", entry.file.name)
+        formData.append("originalFileTypes", entry.file.type)
+        formData.append("pageCounts", requiresManualPageCount(entry.file) ? entry.pageCount : "")
+        formData.append("pdfPasswords", isPdfUploadFile(entry.file) ? entry.pdfPassword : "")
+        
+        if (isFirstFile) {
+          formData.append("printType", printType)
+          formData.append("firebaseUID", user.uid)
+          formData.append("userEmail", fallbackEmail)
+          formData.append("requestType", requestType)
+          formData.append("supplier", supplier)
+          formData.append("copies", String(parsedCopies))
+          formData.append("spiralBinding", String(spiralBinding))
+          formData.append("instruction", instruction.trim())
+        } else {
+          formData.append("appendOrderId", currentOrderId)
+        }
+        
+        if (isLastFile) {
+          formData.append("isLastFile", "true")
+        }
 
-      if (isPdfFile && pdfPassword) {
-        formData.append("pdfPassword", pdfPassword)
-      }
-
-      const res = await authUploadWithProgress(
-        "/api/upload",
-        {
-          method: "POST",
-          body: formData
-        },
-        {
-          onUploadProgress: ({ loaded, total }) => {
-            const now = Date.now()
-            const elapsedSinceLastMeasure = now - lastMeasuredAt
-
-            if (elapsedSinceLastMeasure > 0) {
-              const nextSpeed = ((loaded - lastLoaded) * 1000) / elapsedSinceLastMeasure
-
-              if (Number.isFinite(nextSpeed) && nextSpeed > 0) {
-                lastSpeedBytesPerSecond = nextSpeed
-              }
-            }
-
-            lastLoaded = loaded
-            lastMeasuredAt = now
-            setUploadProgress({
-              stage: "uploading",
-              startedAt,
-              loaded,
-              total,
-              speedBytesPerSecond: lastSpeedBytesPerSecond
-            })
+        const res = await authUploadWithProgress(
+          "/api/upload",
+          {
+            method: "POST",
+            body: formData
           },
-          onUploadComplete: () => {
-            setUploadProgress((current) => {
-              if (!current) {
-                return {
-                  stage: "processing",
-                  startedAt,
-                  loaded: lastLoaded,
-                  total: lastLoaded || null,
-                  speedBytesPerSecond: null
+          {
+            onUploadProgress: ({ loaded, total }) => {
+              const now = Date.now()
+              const elapsedSinceLastMeasure = now - lastMeasuredAt
+
+              if (elapsedSinceLastMeasure > 0) {
+                const nextSpeed = ((loaded - lastFileLoaded) * 1000) / elapsedSinceLastMeasure
+
+                if (Number.isFinite(nextSpeed) && nextSpeed > 0) {
+                  lastSpeedBytesPerSecond = nextSpeed
                 }
               }
 
-              const completedBytes = current.total ?? current.loaded
+              const newTotalLoaded = totalLoaded + (loaded - lastFileLoaded)
+              lastFileLoaded = loaded
+              totalLoaded = newTotalLoaded
+              lastMeasuredAt = now
+              
+              setUploadProgress({
+                stage: "uploading",
+                startedAt,
+                loaded: totalLoaded,
+                total: null, // Total is hard to estimate across files accurately here unless we precalculate
+                speedBytesPerSecond: lastSpeedBytesPerSecond
+              })
+            },
+            onUploadComplete: () => {
+              setUploadProgress((current) => {
+                if (!current) {
+                  return {
+                    stage: "processing",
+                    startedAt,
+                    loaded: totalLoaded,
+                    total: totalLoaded || null,
+                    speedBytesPerSecond: null
+                  }
+                }
 
-              return {
-                ...current,
-                stage: "processing",
-                loaded: completedBytes,
-                total: current.total ?? (completedBytes || null),
-                speedBytesPerSecond: null
-              }
-            })
+                return {
+                  ...current,
+                  stage: "processing",
+                  loaded: totalLoaded,
+                  speedBytesPerSecond: null
+                }
+              })
+            }
           }
-        }
-      )
+        )
 
-      const { data, rawText } = await readJsonResponseSafely<UploadResponseData>(res)
-      const uploadErrorMessage =
-        data?.error ||
-        (res.status === 413
-          ? getUploadLimitErrorMessage(file)
-          : rawText.trim() || "Upload failed")
+        const { data, rawText } = await readJsonResponseSafely<UploadResponseData>(res)
+        const uploadErrorMessage =
+          data?.error ||
+          (res.status === 413
+            ? `File ${i + 1} exceeds the size limit.`
+            : rawText.trim() || `Upload failed for file ${i + 1}`)
 
-      if (!res.ok || !data || data.error) {
-        if (data?.requiresPdfPassword) {
-          setNeedsPdfPassword(true)
+        if (!res.ok || !data || data.error) {
+          if (data?.requiresPdfPassword) {
+            updateFileEntry(entry.id, { needsPdfPassword: true })
+          }
+          throw new Error(uploadErrorMessage)
         }
-        toast.error(uploadErrorMessage)
-        return
+
+        if (isFirstFile && data.orderId) {
+          currentOrderId = data.orderId
+        }
+        
+        if (isLastFile) {
+          finalData = data
+        }
       }
 
-      toast.success(
-        `${wasCompressed ? "Large image compressed automatically. " : ""}Pages: ${data.pages} | Copies: ${data.copies ?? parsedCopies} | Estimated Price: ₹${data.estimatedPrice}`
-      )
-      setFile(null)
-      setPageCount("")
+      if (finalData) {
+        toast.success(
+          `Order created! ${finalData.fileCount ?? 1} file(s) | Total Pages: ${finalData.pages} | Copies: ${finalData.copies ?? parsedCopies} | ₹${finalData.estimatedPrice}`
+        )
+      }
+
+      setFileEntries([])
       setCopies("1")
-      setPdfPassword("")
-      setNeedsPdfPassword(false)
       setSpiralBinding(false)
       setInstruction("")
       if (fileInputRef.current) {
@@ -349,7 +436,7 @@ export default function CreateOrderPage() {
                   Create Print Order
                 </h1>
                 <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">
-                  The prices below are live and match the current admin-configured rates.
+                  Upload up to {MAX_FILES_PER_ORDER} files per order. Prices below are live admin-configured rates.
                 </p>
               </div>
 
@@ -370,74 +457,137 @@ export default function CreateOrderPage() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
 
+            {/* File Upload Zone */}
             <div>
               <label className="block mb-2 text-sm text-gray-400">
-                Upload File
+                Upload Files ({fileEntries.length}/{MAX_FILES_PER_ORDER})
               </label>
-              <input
-                ref={fileInputRef}
-                type="file"
-                required
-                accept={UPLOAD_ACCEPT_ATTRIBUTE}
-                onChange={(e) => {
-                  const selectedFile = e.target.files?.[0] || null
-                  setFile(selectedFile)
-                  setPdfPassword("")
-                  setNeedsPdfPassword(false)
 
-                  if (!requiresManualPageCount(selectedFile)) {
-                    setPageCount("")
-                  }
-                }}
-                className="w-full bg-dark p-3 rounded-lg border border-gray-700"
-              />
-              <p className="mt-2 text-xs text-gray-400">
-                {UPLOAD_POLICY_HELPER_TEXT}
-              </p>
+              {fileEntries.length < MAX_FILES_PER_ORDER && (
+                <div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept={UPLOAD_ACCEPT_ATTRIBUTE}
+                    onChange={(e) => handleFilesSelected(e.target.files)}
+                    className="w-full bg-dark p-3 rounded-lg border border-gray-700"
+                  />
+                  <p className="mt-2 text-xs text-gray-400">
+                    {UPLOAD_POLICY_HELPER_TEXT}
+                  </p>
+                </div>
+              )}
+
+              {fileEntries.length >= MAX_FILES_PER_ORDER && (
+                <p className="text-xs text-amber-400 mt-1">
+                  Maximum {MAX_FILES_PER_ORDER} files reached. Remove a file to add another.
+                </p>
+              )}
             </div>
 
-            {requiresManualPageCount(file) && (
-              <div>
-                <label className="block mb-2 text-sm text-gray-400">
-                  Page Count
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={pageCount}
-                  onChange={(e) => setPageCount(e.target.value.replace(/\D/g, ""))}
-                  placeholder="Enter total pages in document"
-                  className="w-full bg-dark p-3 rounded-lg border border-gray-700"
-                />
-                <p className="mt-2 text-xs text-gray-400">
-                  Required for DOC and DOCX because page count is entered manually.
-                </p>
-              </div>
-            )}
+            {/* File List */}
+            {fileEntries.length > 0 && (
+              <div className="space-y-3">
+                {fileEntries.map((entry, index) => (
+                  <div
+                    key={entry.id}
+                    className="rounded-xl border border-gray-700 bg-dark/50 p-4 space-y-3"
+                  >
+                    {/* File header */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${getFileTypeBadgeColor(entry.file)}`}>
+                          {getFileTypeLabel(entry.file)}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{entry.file.name}</p>
+                          <p className="text-xs text-gray-400">{formatBytes(entry.file.size)}</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFileEntry(entry.id)}
+                        className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border border-gray-700 text-gray-400 hover:text-rose-400 hover:border-rose-500/40 transition-colors"
+                        title="Remove file"
+                      >
+                        ×
+                      </button>
+                    </div>
 
-            {showPdfPasswordField && (
-              <div>
-                <label className="block mb-2 text-sm text-gray-400">
-                  PDF Password
-                </label>
-                <input
-                  type="password"
-                  value={pdfPassword}
-                  onChange={(e) => setPdfPassword(e.target.value)}
-                  placeholder="Enter the password used to open this PDF"
-                  className="w-full bg-dark p-3 rounded-lg border border-gray-700"
-                />
-                <p className="mt-2 text-xs text-gray-400">
-                  We use this only to read the real page count and store it with the order so the supplier can open the locked PDF.
-                </p>
-              </div>
-            )}
+                    {/* Per-file page count */}
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-gray-400 shrink-0 w-16">Pages:</label>
+                      {requiresManualPageCount(entry.file) ? (
+                        <div className="flex-1">
+                          <input
+                            type="number"
+                            min="1"
+                            value={entry.pageCount}
+                            onChange={(e) =>
+                              updateFileEntry(entry.id, {
+                                pageCount: e.target.value.replace(/\D/g, "")
+                              })
+                            }
+                            placeholder="Enter page count"
+                            className="w-full bg-dark p-2 rounded-lg border border-gray-700 text-sm"
+                          />
+                          <p className="mt-1 text-[10px] text-amber-400/80">
+                            DOC/DOCX files require manual page count
+                          </p>
+                        </div>
+                      ) : isPdfUploadFile(entry.file) ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <span className="text-xs text-emerald-400 font-medium">Auto-detected</span>
+                          {entry.pageCount && (
+                            <span className="text-xs text-gray-400">
+                              (Override:{" "}
+                              <input
+                                type="number"
+                                min="1"
+                                value={entry.pageCount}
+                                onChange={(e) =>
+                                  updateFileEntry(entry.id, {
+                                    pageCount: e.target.value.replace(/\D/g, "")
+                                  })
+                                }
+                                className="w-16 bg-dark p-1 rounded border border-gray-700 text-xs inline"
+                              />
+                              )
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">1 page (image)</span>
+                      )}
+                    </div>
 
-            {isPdfFile && !showPdfPasswordField && (
-              <p className="text-xs text-gray-400">
-                If this PDF is locked, submit once and we will ask for the password before creating the order.
-              </p>
+                    {/* Per-file PDF password */}
+                    {isPdfUploadFile(entry.file) && (entry.needsPdfPassword || entry.pdfPassword.length > 0) && (
+                      <div>
+                        <input
+                          type="password"
+                          value={entry.pdfPassword}
+                          onChange={(e) =>
+                            updateFileEntry(entry.id, { pdfPassword: e.target.value })
+                          }
+                          placeholder="PDF password for this file"
+                          className="w-full bg-dark p-2 rounded-lg border border-gray-700 text-sm"
+                        />
+                        <p className="mt-1 text-[10px] text-gray-400">
+                          Used to read pages and shared with the supplier.
+                        </p>
+                      </div>
+                    )}
+
+                    {isPdfUploadFile(entry.file) && !entry.needsPdfPassword && entry.pdfPassword.length === 0 && (
+                      <p className="text-[10px] text-gray-500">
+                        Locked PDF? Submit once and we&apos;ll ask for the password.
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
 
             <div>
@@ -536,7 +686,7 @@ export default function CreateOrderPage() {
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || fileEntries.length === 0}
               className="w-full py-3 bg-primary text-black rounded-xl font-semibold hover:opacity-90 disabled:opacity-50"
             >
               {submitting
@@ -545,7 +695,9 @@ export default function CreateOrderPage() {
                   : uploadPercent !== null
                     ? `Uploading ${uploadPercent}%...`
                     : "Uploading..."
-                : "Create Order"}
+                : fileEntries.length === 0
+                  ? "Add files to create order"
+                  : `Create Order (${fileEntries.length} file${fileEntries.length > 1 ? "s" : ""})`}
             </button>
 
             {submitting && uploadProgress && (
@@ -556,7 +708,7 @@ export default function CreateOrderPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-medium text-slate-800 dark:text-white">
                     {uploadProgress.stage === "uploading"
-                      ? "Uploading your file"
+                      ? `Uploading ${fileEntries.length} file${fileEntries.length > 1 ? "s" : ""}`
                       : "Upload complete. Creating your order"}
                   </p>
                   <span className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">

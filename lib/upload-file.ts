@@ -1,3 +1,5 @@
+export const MAX_FILES_PER_ORDER = 5
+
 export const ACCEPTED_UPLOAD_EXTENSIONS = [
   ".pdf",
   ".png",

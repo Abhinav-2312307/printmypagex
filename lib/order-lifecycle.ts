@@ -1,8 +1,7 @@
 import Order from "@/models/Order"
+import { getPlatformSettings } from "@/lib/platform-settings"
 
-const DAY_IN_MS = 24 * 60 * 60 * 1000
-const PENDING_AUTO_CANCEL_AGE_MS = 3 * DAY_IN_MS
-const PAYMENT_AUTO_CANCEL_AGE_MS = DAY_IN_MS
+const HOUR_IN_MS = 60 * 60 * 1000
 
 type LifecycleScope = {
   userUID?: string
@@ -32,9 +31,13 @@ function getScopeFilter(scope: LifecycleScope) {
 export async function applyOrderLifecycleRules(
   scope: LifecycleScope = {}
 ): Promise<LifecycleSummary> {
+  const settings = await getPlatformSettings()
+  const pendingAutoCancelMs = settings.pendingAutoCancelHours * HOUR_IN_MS
+  const paymentAutoCancelMs = settings.paymentAutoCancelHours * HOUR_IN_MS
+
   const now = new Date()
-  const pendingCutoff = new Date(now.getTime() - PENDING_AUTO_CANCEL_AGE_MS)
-  const paymentCutoff = new Date(now.getTime() - PAYMENT_AUTO_CANCEL_AGE_MS)
+  const pendingCutoff = new Date(now.getTime() - pendingAutoCancelMs)
+  const paymentCutoff = new Date(now.getTime() - paymentAutoCancelMs)
   const scopeFilter = getScopeFilter(scope)
 
   const movedToPrintingResult = await Order.updateMany(
@@ -68,7 +71,7 @@ export async function applyOrderLifecycleRules(
       },
       $push: {
         logs: {
-          message: "Order auto-cancelled after 3 days without supplier acceptance",
+          message: `Order auto-cancelled after ${settings.pendingAutoCancelHours} hours without supplier acceptance`,
           time: now
         }
       }
@@ -97,7 +100,7 @@ export async function applyOrderLifecycleRules(
       },
       $push: {
         logs: {
-          message: "Order auto-cancelled because payment was not completed within 1 day of acceptance",
+          message: `Order auto-cancelled because payment was not completed within ${settings.paymentAutoCancelHours} hours of acceptance`,
           time: now
         }
       }

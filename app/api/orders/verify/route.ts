@@ -110,10 +110,6 @@ export async function POST(req: Request) {
 
     const copies = normalizeCopies(order.copies)
     const pricing = await getPrintPricing()
-    const finalPrice = calculateOrderPrice(verifiedPages, order.printType, pricing, {
-      copies,
-      spiralBinding: Boolean(order.spiralBinding)
-    })
 
     if (!order.supplierUID) {
       order.supplierUID = supplierUID
@@ -124,11 +120,40 @@ export async function POST(req: Request) {
       })
     }
 
-    order.verifiedPages = verifiedPages
-    order.finalPrice = finalPrice
+    // Support per-file verified pages for multi-file orders
+    const fileVerifiedPages = body.fileVerifiedPages as number[] | undefined
+    const hasFiles = Array.isArray(order.files) && order.files.length > 0
+
+    if (hasFiles && Array.isArray(fileVerifiedPages) && fileVerifiedPages.length > 0) {
+      // Per-file verification
+      let totalVerifiedPages = 0
+      for (let i = 0; i < order.files.length; i++) {
+        const filePages = Number(fileVerifiedPages[i])
+        if (Number.isFinite(filePages) && filePages > 0) {
+          order.files[i].verifiedPages = filePages
+          totalVerifiedPages += filePages
+        } else {
+          // Keep the original file pages if no verified count provided
+          totalVerifiedPages += Number(order.files[i].verifiedPages ?? order.files[i].pages ?? 0)
+        }
+      }
+      order.verifiedPages = totalVerifiedPages
+      order.finalPrice = calculateOrderPrice(totalVerifiedPages, order.printType, pricing, {
+        copies,
+        spiralBinding: Boolean(order.spiralBinding)
+      })
+    } else {
+      // Legacy single-file verification
+      order.verifiedPages = verifiedPages
+      order.finalPrice = calculateOrderPrice(verifiedPages, order.printType, pricing, {
+        copies,
+        spiralBinding: Boolean(order.spiralBinding)
+      })
+    }
+
     order.status = "awaiting_payment"
     order.logs.push({
-      message: `Supplier verified ${verifiedPages} pages for ${copies} copies`,
+      message: `Supplier verified ${order.verifiedPages} pages for ${copies} copies`,
       time: new Date()
     })
 
@@ -161,9 +186,9 @@ export async function POST(req: Request) {
         orderId: String(order._id),
         userUID: String(order.userUID),
         supplierUID,
-        verifiedPages,
+        verifiedPages: order.verifiedPages,
         copies,
-        finalPrice
+        finalPrice: order.finalPrice
       }
     })
 

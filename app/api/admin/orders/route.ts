@@ -342,6 +342,25 @@ export async function PATCH(req: Request) {
     shouldSave = true
   }
 
+  // Admin can edit createdAt
+  const createdAtProvided = body?.createdAt !== undefined && body?.createdAt !== null && body?.createdAt !== ""
+  if (createdAtProvided) {
+    const parsedDate = new Date(body.createdAt)
+    if (Number.isNaN(parsedDate.getTime())) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "createdAt must be a valid date"
+        },
+        { status: 400 }
+      )
+    }
+    const previousCreatedAt = order.createdAt ? new Date(order.createdAt).toISOString() : "unknown"
+    order.createdAt = parsedDate
+    changes.push(`createdAt changed from ${previousCreatedAt} to ${parsedDate.toISOString()}`)
+    shouldSave = true
+  }
+
   if (!shouldSave) {
     const untouchedOrder = await enrichOrder(order.toObject() as OrderDoc)
     return NextResponse.json({

@@ -27,6 +27,14 @@ displayPhotoURL?: string
 isOwner?: boolean
 }
 
+type OrderFileEntry = {
+  fileURL?: string
+  fileOriginalName?: string
+  fileMimeType?: string
+  pages?: number
+  verifiedPages?: number | null
+}
+
 type UserOrder = {
 _id: string
 supplierUID?: string | null
@@ -39,6 +47,8 @@ paymentStatus: string
 estimatedPrice?: number
 finalPrice?: number | null
 fileURL?: string
+fileOriginalName?: string
+files?: OrderFileEntry[]
 duplex?: boolean
 spiralBinding?: boolean
 instruction?: string
@@ -698,17 +708,39 @@ Accepted:
 : "Not accepted yet"}
 </p>
 
-{selectedOrder.fileURL &&(
-
-<a
-href={selectedOrder.fileURL}
-target="_blank"
-className="text-indigo-400 underline"
->
-View Uploaded File
-</a>
-
-)}
+{/* Files Section */}
+{selectedOrder.files && selectedOrder.files.length > 0 ? (
+  <div className="space-y-2">
+    <p className="text-sm font-medium text-gray-400">Files ({selectedOrder.files.length}):</p>
+    {selectedOrder.files.map((file: OrderFileEntry, idx: number) => (
+      <div key={idx} className="flex items-center justify-between gap-2 rounded-lg border border-gray-700 bg-dark/30 px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-sm truncate">{file.fileOriginalName || `File ${idx + 1}`}</p>
+          <p className="text-xs text-gray-400">
+            {file.verifiedPages ?? file.pages ?? 0} pages
+          </p>
+        </div>
+        {file.fileURL && (
+          <a
+            href={file.fileURL}
+            target="_blank"
+            className="shrink-0 text-xs text-indigo-400 underline"
+          >
+            View
+          </a>
+        )}
+      </div>
+    ))}
+  </div>
+) : selectedOrder.fileURL ? (
+  <a
+    href={selectedOrder.fileURL}
+    target="_blank"
+    className="text-indigo-400 underline"
+  >
+    View Uploaded File
+  </a>
+) : null}
 
 </div>
 

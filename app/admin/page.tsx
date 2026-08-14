@@ -1,5 +1,6 @@
 "use client"
 
+import { motion } from "framer-motion"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { onAuthStateChanged, signOut } from "firebase/auth"
 import { useRouter } from "next/navigation"
@@ -2959,8 +2960,13 @@ export default function AdminPortalPage() {
             aria-label="Close control hub"
           />
 
-          <div className="relative w-[min(980px,94vw)] mt-[8vh] mx-auto rounded-3xl border border-gray-200 dark:border-white/20 bg-white/85 dark:bg-black/80 backdrop-blur-3xl shadow-[0_20px_80px_rgba(0,0,0,0.45)] overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-white/10">
+          <motion.div 
+            drag 
+            dragMomentum={false}
+            className="relative w-[min(980px,94vw)] mt-[8vh] mx-auto rounded-3xl border border-gray-200 dark:border-white/20 bg-white/85 dark:bg-black/80 backdrop-blur-3xl shadow-[0_20px_80px_rgba(0,0,0,0.45)] flex flex-col"
+            style={{ maxHeight: "85vh", resize: "both", overflow: "hidden" }}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-white/10 cursor-move">
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full bg-rose-500" />
@@ -2981,7 +2987,7 @@ export default function AdminPortalPage() {
               </button>
             </div>
 
-            <div className="p-5 space-y-5">
+            <div className="p-5 space-y-5 overflow-y-auto flex-1">
               <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-3">
                 {[
                   { label: "Auto Sync", value: autoRefresh ? "On (60s)" : "Off" },
@@ -3115,7 +3121,7 @@ export default function AdminPortalPage() {
                 </button>
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
       ) : null}
 

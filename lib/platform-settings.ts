@@ -3,17 +3,35 @@ import PlatformSettings from "@/models/PlatformSettings"
 
 export type PlatformSettingsSnapshot = {
   landingFeedbackVisible: boolean
+  pendingAutoCancelHours: number
+  paymentAutoCancelHours: number
   updatedAt: string | null
 }
 
 type PlatformSettingsDoc = {
   landingFeedbackVisible?: boolean
+  pendingAutoCancelHours?: number
+  paymentAutoCancelHours?: number
   updatedAt?: Date | string | null
 }
 
+const DEFAULT_PENDING_AUTO_CANCEL_HOURS = 72
+const DEFAULT_PAYMENT_AUTO_CANCEL_HOURS = 24
+const MIN_AUTO_CANCEL_HOURS = 1
+
 export const defaultPlatformSettings: PlatformSettingsSnapshot = {
   landingFeedbackVisible: true,
+  pendingAutoCancelHours: DEFAULT_PENDING_AUTO_CANCEL_HOURS,
+  paymentAutoCancelHours: DEFAULT_PAYMENT_AUTO_CANCEL_HOURS,
   updatedAt: null
+}
+
+function sanitizeHours(value: unknown, fallback: number): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < MIN_AUTO_CANCEL_HOURS) {
+    return fallback
+  }
+  return Math.round(parsed)
 }
 
 function sanitizePlatformSettings(
@@ -21,6 +39,14 @@ function sanitizePlatformSettings(
 ): PlatformSettingsSnapshot {
   return {
     landingFeedbackVisible: value?.landingFeedbackVisible !== false,
+    pendingAutoCancelHours: sanitizeHours(
+      value?.pendingAutoCancelHours,
+      DEFAULT_PENDING_AUTO_CANCEL_HOURS
+    ),
+    paymentAutoCancelHours: sanitizeHours(
+      value?.paymentAutoCancelHours,
+      DEFAULT_PAYMENT_AUTO_CANCEL_HOURS
+    ),
     updatedAt: value?.updatedAt ? new Date(value.updatedAt).toISOString() : null
   }
 }
@@ -48,7 +74,9 @@ export async function savePlatformSettings(
     { key: "main" },
     {
       key: "main",
-      landingFeedbackVisible: sanitized.landingFeedbackVisible
+      landingFeedbackVisible: sanitized.landingFeedbackVisible,
+      pendingAutoCancelHours: sanitized.pendingAutoCancelHours,
+      paymentAutoCancelHours: sanitized.paymentAutoCancelHours
     },
     {
       upsert: true,
