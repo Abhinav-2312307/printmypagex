@@ -75,6 +75,7 @@ type Tab =
   | "feedback"
   | "faqs"
   | "logs"
+  | "settings"
   | "danger"
 
 type OverviewResponse = {
@@ -220,6 +221,14 @@ type AdminActivityLog = {
 
 type PlatformSettings = {
   landingFeedbackVisible: boolean
+  pendingAutoCancelHours: number
+  paymentAutoCancelHours: number
+  orderBurstMaxRequests: number
+  orderBurstBlockMinutes: number
+  orderDailyMaxRequests: number
+  orderDailyBlockHours: number
+  maxFilesPerOrder: number
+  maxSupplierDiscountPercent: number
   updatedAt?: string | null
 }
 
@@ -416,6 +425,14 @@ export default function AdminPortalPage() {
   const [activityLogs, setActivityLogs] = useState<AdminActivityLog[]>([])
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({
     landingFeedbackVisible: true,
+    pendingAutoCancelHours: 72,
+    paymentAutoCancelHours: 24,
+    orderBurstMaxRequests: 15,
+    orderBurstBlockMinutes: 15,
+    orderDailyMaxRequests: 20,
+    orderDailyBlockHours: 24,
+    maxFilesPerOrder: 5,
+    maxSupplierDiscountPercent: 50,
     updatedAt: null
   })
   const [faqContent, setFaqContent] = useState<FAQContentSnapshot>(defaultFaqContentSnapshot)
@@ -559,7 +576,18 @@ export default function AdminPortalPage() {
     setPayoutRequests(payoutsRes.requests || [])
     setFeedbacks(feedbacksRes.feedbacks || [])
     setActivityLogs(logsRes.logs || [])
-    setPlatformSettings(settingsRes.settings || { landingFeedbackVisible: true, updatedAt: null })
+    setPlatformSettings(settingsRes.settings || {
+      landingFeedbackVisible: true,
+      pendingAutoCancelHours: 72,
+      paymentAutoCancelHours: 24,
+      orderBurstMaxRequests: 15,
+      orderBurstBlockMinutes: 15,
+      orderDailyMaxRequests: 20,
+      orderDailyBlockHours: 24,
+      maxFilesPerOrder: 5,
+      maxSupplierDiscountPercent: 50,
+      updatedAt: null
+    })
     setFaqContent(faqsRes.content || defaultFaqContentSnapshot)
     setLastSyncedAt(new Date())
   }, [adminFetch])
@@ -716,6 +744,62 @@ export default function AdminPortalPage() {
       setPlatformSettings(response.settings || { landingFeedbackVisible: nextVisible, updatedAt: null })
       await loadAll()
       setMessage(response.message || `Landing feedback showcase turned ${nextVisible ? "on" : "off"}`)
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError))
+    } finally {
+      setBusyAction("")
+    }
+  }
+
+  const [settingsForm, setSettingsForm] = useState({
+    pendingAutoCancelHours: "72",
+    paymentAutoCancelHours: "24",
+    orderBurstMaxRequests: "15",
+    orderBurstBlockMinutes: "15",
+    orderDailyMaxRequests: "20",
+    orderDailyBlockHours: "24",
+    maxFilesPerOrder: "5",
+    maxSupplierDiscountPercent: "50"
+  })
+
+  // Sync settingsForm whenever platformSettings change
+  useEffect(() => {
+    setSettingsForm({
+      pendingAutoCancelHours: String(platformSettings.pendingAutoCancelHours ?? 72),
+      paymentAutoCancelHours: String(platformSettings.paymentAutoCancelHours ?? 24),
+      orderBurstMaxRequests: String(platformSettings.orderBurstMaxRequests ?? 15),
+      orderBurstBlockMinutes: String(platformSettings.orderBurstBlockMinutes ?? 15),
+      orderDailyMaxRequests: String(platformSettings.orderDailyMaxRequests ?? 20),
+      orderDailyBlockHours: String(platformSettings.orderDailyBlockHours ?? 24),
+      maxFilesPerOrder: String(platformSettings.maxFilesPerOrder ?? 5),
+      maxSupplierDiscountPercent: String(platformSettings.maxSupplierDiscountPercent ?? 50)
+    })
+  }, [platformSettings])
+
+  const saveAdminSettings = async () => {
+    try {
+      setBusyAction("save-settings")
+      setMessage("")
+      setError("")
+
+      const payload: Record<string, number> = {}
+      const fields = Object.keys(settingsForm) as (keyof typeof settingsForm)[]
+      for (const key of fields) {
+        const parsed = Number(settingsForm[key])
+        if (!Number.isFinite(parsed) || parsed < 0) {
+          setError(`Invalid value for ${key}`)
+          return
+        }
+        payload[key] = Math.round(parsed)
+      }
+
+      const response = await adminFetch<{ settings: PlatformSettings; message?: string }>("/api/admin/platform-settings", {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      })
+
+      setPlatformSettings(response.settings)
+      setMessage(response.message || "Settings saved successfully")
     } catch (caughtError) {
       setError(getErrorMessage(caughtError))
     } finally {
@@ -1597,6 +1681,7 @@ export default function AdminPortalPage() {
     { value: "feedback", label: "Feedback" },
     { value: "faqs", label: "FAQs" },
     { value: "logs", label: "Logs" },
+    { value: "settings", label: "⚙ Settings" },
     { value: "danger", label: "Danger" }
   ]
 
@@ -2912,6 +2997,164 @@ export default function AdminPortalPage() {
             </div>
           ) : null}
 
+          {activeTab === "settings" ? (
+            <div className="space-y-6">
+              <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-6 space-y-6">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-indigo-500 dark:text-cyan-300">Platform Settings</p>
+                  <h3 className="text-2xl font-semibold mt-2">Admin Controls</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                    Configure auto-cancel timers, rate limiting, order limits, and supplier controls.
+                  </p>
+                </div>
+
+                {/* Auto-Cancel Timers */}
+                <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/50 dark:bg-white/[0.03] p-5 space-y-4">
+                  <div>
+                    <p className="font-medium text-sm">⏱ Auto-Cancel Timers</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      How long before unaccepted or unpaid orders are automatically cancelled.
+                    </p>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Pending Order Auto-Cancel (hours)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={settingsForm.pendingAutoCancelHours}
+                        onChange={(e) => setSettingsForm((prev) => ({ ...prev, pendingAutoCancelHours: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-white/20 text-sm"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1">Cancel if no supplier accepts within this time</p>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Payment Auto-Cancel (hours)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={settingsForm.paymentAutoCancelHours}
+                        onChange={(e) => setSettingsForm((prev) => ({ ...prev, paymentAutoCancelHours: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-white/20 text-sm"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1">Cancel if payment not completed after acceptance</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Rate Limiting */}
+                <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/50 dark:bg-white/[0.03] p-5 space-y-4">
+                  <div>
+                    <p className="font-medium text-sm">🛡 Rate Limiting &amp; Spam Protection</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Control how many orders a user/device can submit and how long they get blocked for spamming.
+                    </p>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Burst Max Requests (per 10 min)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={settingsForm.orderBurstMaxRequests}
+                        onChange={(e) => setSettingsForm((prev) => ({ ...prev, orderBurstMaxRequests: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-white/20 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Burst Block Duration (minutes)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={settingsForm.orderBurstBlockMinutes}
+                        onChange={(e) => setSettingsForm((prev) => ({ ...prev, orderBurstBlockMinutes: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-white/20 text-sm"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1">How long someone is banned after exceeding burst limit</p>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Daily Max Requests (per 24 hr)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={settingsForm.orderDailyMaxRequests}
+                        onChange={(e) => setSettingsForm((prev) => ({ ...prev, orderDailyMaxRequests: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-white/20 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Daily Block Duration (hours)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={settingsForm.orderDailyBlockHours}
+                        onChange={(e) => setSettingsForm((prev) => ({ ...prev, orderDailyBlockHours: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-white/20 text-sm"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1">How long someone is banned after exceeding daily limit</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Order Limits */}
+                <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/50 dark:bg-white/[0.03] p-5 space-y-4">
+                  <div>
+                    <p className="font-medium text-sm">📦 Order Limits</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Configure maximum files allowed per order.
+                    </p>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Max Files Per Order</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={settingsForm.maxFilesPerOrder}
+                        onChange={(e) => setSettingsForm((prev) => ({ ...prev, maxFilesPerOrder: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-white/20 text-sm"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1">Users can upload up to this many files in a single order</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Supplier Controls */}
+                <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/50 dark:bg-white/[0.03] p-5 space-y-4">
+                  <div>
+                    <p className="font-medium text-sm">🏷 Supplier Controls</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Limits on what suppliers can do with accepted orders.
+                    </p>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Max Supplier Discount (%)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={settingsForm.maxSupplierDiscountPercent}
+                        onChange={(e) => setSettingsForm((prev) => ({ ...prev, maxSupplierDiscountPercent: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-white/20 text-sm"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1">Maximum discount % a supplier can offer on an order</p>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  disabled={busyAction === "save-settings"}
+                  onClick={saveAdminSettings}
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white font-medium hover:scale-105 transition disabled:opacity-60"
+                >
+                  {busyAction === "save-settings" ? "Saving..." : "Save All Settings"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {activeTab === "danger" ? (
             <div className="space-y-5">
               <div className="backdrop-blur-2xl bg-rose-500/10 border border-rose-500/40 rounded-3xl p-6 space-y-4">
@@ -3107,6 +3350,17 @@ export default function AdminPortalPage() {
                 >
                   <p className="font-medium">Open Activity Logs</p>
                   <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">Inspect the latest platform events and admin actions</p>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("settings")
+                    setShowControlHub(false)
+                  }}
+                  className="text-left rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 px-4 py-3 hover:bg-gray-100 dark:hover:bg-white/10 transition"
+                >
+                  <p className="font-medium">⚙ Platform Settings</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">Auto-cancel timers, rate limits, supplier controls</p>
                 </button>
 
                 <button

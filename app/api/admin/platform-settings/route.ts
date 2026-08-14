@@ -19,6 +19,25 @@ export async function GET(req: Request) {
   })
 }
 
+type NumericSettingRule = {
+  key: keyof PlatformSettingsSnapshot
+  label: string
+  min: number
+  max?: number
+  unit: string
+}
+
+const NUMERIC_RULES: NumericSettingRule[] = [
+  { key: "pendingAutoCancelHours", label: "Pending auto-cancel", min: 1, unit: "hours" },
+  { key: "paymentAutoCancelHours", label: "Payment auto-cancel", min: 1, unit: "hours" },
+  { key: "orderBurstMaxRequests", label: "Burst max requests", min: 1, unit: "requests" },
+  { key: "orderBurstBlockMinutes", label: "Burst block duration", min: 1, unit: "minutes" },
+  { key: "orderDailyMaxRequests", label: "Daily max requests", min: 1, unit: "requests" },
+  { key: "orderDailyBlockHours", label: "Daily block duration", min: 1, unit: "hours" },
+  { key: "maxFilesPerOrder", label: "Max files per order", min: 1, max: 10, unit: "files" },
+  { key: "maxSupplierDiscountPercent", label: "Max supplier discount", min: 0, max: 100, unit: "%" }
+]
+
 export async function PUT(req: Request) {
   const auth = await authenticateAdminRequest(req)
   if (!auth.ok) return auth.response
@@ -45,40 +64,33 @@ export async function PUT(req: Request) {
     )
   }
 
-  // Validate pendingAutoCancelHours
-  if (body.pendingAutoCancelHours !== undefined) {
-    const parsed = Number(body.pendingAutoCancelHours)
-    if (!Number.isFinite(parsed) || parsed < 1) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "pendingAutoCancelHours must be at least 1"
-        },
-        { status: 400 }
-      )
+  // Validate all numeric settings
+  for (const rule of NUMERIC_RULES) {
+    const rawValue = body[rule.key]
+    if (rawValue !== undefined) {
+      const parsed = Number(rawValue)
+      if (!Number.isFinite(parsed) || parsed < rule.min) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `${rule.label} must be at least ${rule.min}`
+          },
+          { status: 400 }
+        )
+      }
+      if (rule.max !== undefined && parsed > rule.max) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `${rule.label} must be at most ${rule.max}`
+          },
+          { status: 400 }
+        )
+      }
+      const rounded = Math.round(parsed)
+      ;(updates as Record<string, unknown>)[rule.key] = rounded
+      changeDescriptions.push(`${rule.label} set to ${rounded} ${rule.unit}`)
     }
-    updates.pendingAutoCancelHours = Math.round(parsed)
-    changeDescriptions.push(
-      `Pending auto-cancel set to ${updates.pendingAutoCancelHours} hours`
-    )
-  }
-
-  // Validate paymentAutoCancelHours
-  if (body.paymentAutoCancelHours !== undefined) {
-    const parsed = Number(body.paymentAutoCancelHours)
-    if (!Number.isFinite(parsed) || parsed < 1) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "paymentAutoCancelHours must be at least 1"
-        },
-        { status: 400 }
-      )
-    }
-    updates.paymentAutoCancelHours = Math.round(parsed)
-    changeDescriptions.push(
-      `Payment auto-cancel set to ${updates.paymentAutoCancelHours} hours`
-    )
   }
 
   if (Object.keys(updates).length === 0) {
@@ -106,11 +118,7 @@ export async function PUT(req: Request) {
     entityId: "main",
     level: "info",
     message: changeDescriptions.join(" | ") || "Platform settings updated",
-    metadata: {
-      landingFeedbackVisible: settings.landingFeedbackVisible,
-      pendingAutoCancelHours: settings.pendingAutoCancelHours,
-      paymentAutoCancelHours: settings.paymentAutoCancelHours
-    }
+    metadata: { ...settings }
   })
 
   return NextResponse.json({
