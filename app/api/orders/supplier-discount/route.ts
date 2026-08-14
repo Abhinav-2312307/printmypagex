@@ -32,9 +32,8 @@ export async function POST(req: Request) {
       { status: 400 }
     )
   }
-
-  const hasPercent = discountPercent !== undefined && discountPercent !== null && discountPercent !== ""
-  const hasAmount = discountAmount !== undefined && discountAmount !== null && discountAmount !== ""
+  const hasPercent = discountPercent !== undefined && discountPercent !== null
+  const hasAmount = discountAmount !== undefined && discountAmount !== null
 
   if (hasPercent && hasAmount) {
     return NextResponse.json(

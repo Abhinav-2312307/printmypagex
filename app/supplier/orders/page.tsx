@@ -56,6 +56,8 @@ type SupplierOrderDetail = {
     firebasePhotoURL?: string
     displayPhotoURL?: string
   }
+  discountPercent?: number
+  discountAmount?: number
 }
 
 export default function SupplierOrders(){
@@ -68,6 +70,9 @@ const [uid,setUid] = useState<string | null>(null)
 const [filter,setFilter] = useState("pending")
 const [verifiedPages,setVerifiedPages] = useState<number>(0)
 const [showAcceptConfirm,setShowAcceptConfirm] = useState(false)
+const [discountType, setDiscountType] = useState<"percent" | "amount">("percent")
+const [discountValue, setDiscountValue] = useState<string>("")
+const [applyingDiscount, setApplyingDiscount] = useState(false)
 const { pricing } = usePrintPricing()
 
 async function loadOrders(uid:string){
@@ -225,6 +230,45 @@ toast.error("Failed to accept order")
 
 }
 
+
+const applyDiscount = async (orderId: string) => {
+  if (!uid) return
+  
+  if (!discountValue || isNaN(Number(discountValue)) || Number(discountValue) < 0) {
+    toast.error("Please enter a valid discount amount")
+    return
+  }
+
+  setApplyingDiscount(true)
+  try {
+    const payload = discountType === "percent" 
+      ? { orderId, discountPercent: Number(discountValue) }
+      : { orderId, discountAmount: Number(discountValue) }
+
+    const res = await authFetch("/api/orders/supplier-discount", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    })
+
+    const data = await res.json()
+    if (!res.ok || !data.success) {
+      toast.error(data.message || "Failed to apply discount")
+      return
+    }
+
+    toast.success(data.message || "Discount applied successfully")
+    loadOrders(uid)
+    setSelectedOrder(data.order)
+    setDiscountValue("")
+  } catch (error) {
+    toast.error("An error occurred while applying discount")
+  } finally {
+    setApplyingDiscount(false)
+  }
+}
 
 const cancelOrder = async(orderId:string)=>{
 
@@ -731,6 +775,56 @@ Created:
     Preview Uploaded File
   </a>
 ) : null}
+
+{/* Give Discount Section */}
+{["awaiting_payment", "accepted"].includes(selectedOrder.status) && selectedOrder.paymentStatus !== "paid" && (
+  <div className="mt-4 p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 space-y-3">
+    <p className="font-semibold text-indigo-400">Apply Discount</p>
+    
+    <div className="flex items-center gap-3">
+      <button 
+        onClick={() => setDiscountType("percent")}
+        className={`px-3 py-1 rounded text-xs font-medium border transition ${discountType === "percent" ? "bg-indigo-500 text-white border-indigo-500" : "bg-transparent border-gray-600 hover:border-gray-400"}`}
+      >
+        % Percent
+      </button>
+      <button 
+        onClick={() => setDiscountType("amount")}
+        className={`px-3 py-1 rounded text-xs font-medium border transition ${discountType === "amount" ? "bg-indigo-500 text-white border-indigo-500" : "bg-transparent border-gray-600 hover:border-gray-400"}`}
+      >
+        ₹ Flat Amount
+      </button>
+    </div>
+
+    <div className="flex items-center gap-2">
+      <div className="relative flex-1 max-w-[150px]">
+        {discountType === "amount" && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₹</span>}
+        <input 
+          type="number" 
+          min="0"
+          value={discountValue}
+          onChange={(e) => setDiscountValue(e.target.value)}
+          placeholder={discountType === "percent" ? "e.g. 10" : "e.g. 50"}
+          className={`w-full bg-white/10 dark:bg-black/30 border border-gray-600 rounded-lg py-1.5 text-sm ${discountType === "amount" ? "pl-7 pr-3" : "px-3"}`}
+        />
+        {discountType === "percent" && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>}
+      </div>
+      <button
+        onClick={() => applyDiscount(selectedOrder._id)}
+        disabled={applyingDiscount || !discountValue}
+        className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 text-sm font-medium transition"
+      >
+        {applyingDiscount ? "Applying..." : "Apply"}
+      </button>
+    </div>
+    
+    {selectedOrder.discountPercent && selectedOrder.discountPercent > 0 ? (
+      <p className="text-xs text-green-500 dark:text-green-400">
+        Currently applied: {selectedOrder.discountPercent}% off (₹{selectedOrder.discountAmount})
+      </p>
+    ) : null}
+  </div>
+)}
 
 </div>
 
