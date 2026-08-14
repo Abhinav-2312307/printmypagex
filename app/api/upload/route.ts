@@ -27,6 +27,7 @@ import {
 import cloudinary from "@/lib/cloudinary"
 import { calculateOrderPrice } from "@/lib/print-pricing"
 import { getPrintPricing } from "@/lib/print-pricing-store"
+import { getPlatformSettings } from "@/lib/platform-settings"
 import {
   buildSubmissionFingerprint,
   createSubmissionLimitResponse,
@@ -53,35 +54,43 @@ const PDFJS = require("pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js") as {
   }
 }
 
-const ORDER_DEVICE_RULES = [
-  {
-    name: "order-device-burst",
-    windowMs: 10 * 60 * 1000,
-    maxRequests: 15,
-    blockDurationMs: 15 * 60 * 1000
-  },
-  {
-    name: "order-device-daily",
-    windowMs: 24 * 60 * 60 * 1000,
-    maxRequests: 20,
-    blockDurationMs: 24 * 60 * 60 * 1000
+function buildOrderRateLimitRules(settings: {
+  orderBurstMaxRequests: number
+  orderBurstBlockMinutes: number
+  orderDailyMaxRequests: number
+  orderDailyBlockHours: number
+}) {
+  return {
+    deviceRules: [
+      {
+        name: "order-device-burst",
+        windowMs: 10 * 60 * 1000,
+        maxRequests: settings.orderBurstMaxRequests,
+        blockDurationMs: settings.orderBurstBlockMinutes * 60 * 1000
+      },
+      {
+        name: "order-device-daily",
+        windowMs: 24 * 60 * 60 * 1000,
+        maxRequests: settings.orderDailyMaxRequests,
+        blockDurationMs: settings.orderDailyBlockHours * 60 * 60 * 1000
+      }
+    ],
+    userRules: [
+      {
+        name: "order-user-burst",
+        windowMs: 10 * 60 * 1000,
+        maxRequests: settings.orderBurstMaxRequests,
+        blockDurationMs: settings.orderBurstBlockMinutes * 60 * 1000
+      },
+      {
+        name: "order-user-daily",
+        windowMs: 24 * 60 * 60 * 1000,
+        maxRequests: settings.orderDailyMaxRequests,
+        blockDurationMs: settings.orderDailyBlockHours * 60 * 60 * 1000
+      }
+    ]
   }
-]
-
-const ORDER_USER_RULES = [
-  {
-    name: "order-user-burst",
-    windowMs: 10 * 60 * 1000,
-    maxRequests: 15,
-    blockDurationMs: 15 * 60 * 1000
-  },
-  {
-    name: "order-user-daily",
-    windowMs: 24 * 60 * 60 * 1000,
-    maxRequests: 20,
-    blockDurationMs: 24 * 60 * 60 * 1000
-  }
-]
+}
 
 const VALID_PRINT_TYPES = new Set(["bw", "color", "glossy"])
 const VALID_REQUEST_TYPES = new Set(["global", "specific"])
@@ -677,17 +686,19 @@ export async function POST(req: Request) {
       spiralBinding,
       instruction
     ])
+    const platformSettings = await getPlatformSettings()
+    const rateLimitRules = buildOrderRateLimitRules(platformSettings)
     const guard = await enforceSubmissionGuards([
       {
         scope: "order-create-device",
         identifier: getRequestDeviceKey(req),
-        rules: ORDER_DEVICE_RULES,
+        rules: rateLimitRules.deviceRules,
         payloadFingerprint
       },
       {
         scope: "order-create-user",
         identifier: buildSubmissionFingerprint([firebaseUID]),
-        rules: ORDER_USER_RULES,
+        rules: rateLimitRules.userRules,
         payloadFingerprint
       }
     ])

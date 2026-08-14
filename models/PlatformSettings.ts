@@ -19,6 +19,30 @@ const PlatformSettingsSchema = new mongoose.Schema(
     paymentAutoCancelHours: {
       type: Number,
       default: 24
+    },
+    orderBurstMaxRequests: {
+      type: Number,
+      default: 15
+    },
+    orderBurstBlockMinutes: {
+      type: Number,
+      default: 15
+    },
+    orderDailyMaxRequests: {
+      type: Number,
+      default: 20
+    },
+    orderDailyBlockHours: {
+      type: Number,
+      default: 24
+    },
+    maxFilesPerOrder: {
+      type: Number,
+      default: 5
+    },
+    maxSupplierDiscountPercent: {
+      type: Number,
+      default: 50
     }
   },
   {
@@ -27,6 +51,19 @@ const PlatformSettingsSchema = new mongoose.Schema(
 )
 
 PlatformSettingsSchema.index({ key: 1 }, { unique: true })
+
+const existingModel = mongoose.models.PlatformSettings
+
+if (
+  existingModel &&
+  (
+    !existingModel.schema.path("orderBurstMaxRequests") ||
+    !existingModel.schema.path("maxSupplierDiscountPercent") ||
+    !existingModel.schema.path("maxFilesPerOrder")
+  )
+) {
+  mongoose.deleteModel("PlatformSettings")
+}
 
 export default mongoose.models.PlatformSettings ||
   mongoose.model("PlatformSettings", PlatformSettingsSchema)
