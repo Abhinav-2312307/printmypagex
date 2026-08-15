@@ -452,7 +452,7 @@ export default function UserDashboard() {
           formData.append("isLastFile", "true")
         }
 
-        if (requiresManualPageCount(entry.file) && entry.pageCount) {
+        if (entry.pageCount) {
           formData.append("pageCount", entry.pageCount)
         }
         if (isPdfUploadFile(entry.file) && entry.pdfPassword) {

@@ -14,11 +14,27 @@ export type ActivityPayload = {
   level?: ActivityLevel
   message: string
   metadata?: Record<string, unknown>
+  req?: Request
 }
 
 export async function recordActivity(payload: ActivityPayload) {
   try {
     await connectDB()
+
+    let ipAddress = ""
+    let userAgent = ""
+
+    if (payload.req) {
+      ipAddress = payload.req.headers.get("x-forwarded-for") || 
+                  payload.req.headers.get("x-real-ip") || 
+                  "unknown"
+      userAgent = payload.req.headers.get("user-agent") || "unknown"
+    }
+
+    const metadata = {
+      ...(payload.metadata || {}),
+      ...(payload.req ? { ipAddress, userAgent } : {})
+    }
 
     await ActivityLog.create({
       actorType: payload.actorType || "system",
@@ -29,7 +45,7 @@ export async function recordActivity(payload: ActivityPayload) {
       entityId: String(payload.entityId || ""),
       level: payload.level || "info",
       message: payload.message,
-      metadata: payload.metadata || {}
+      metadata
     })
   } catch (error) {
     console.error("ACTIVITY_LOG_WRITE_ERROR:", error)

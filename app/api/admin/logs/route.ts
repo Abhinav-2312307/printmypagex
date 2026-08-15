@@ -12,7 +12,28 @@ export async function GET(req: Request) {
     ? Math.min(500, Math.max(1, Math.round(requestedLimit)))
     : 250
 
-  const logs = await ActivityLog.find({})
+  const q = searchParams.get("q") || ""
+  
+  let filter: any = {}
+  
+  if (q) {
+    const regex = { $regex: q, $options: "i" }
+    filter = {
+      $or: [
+        { message: regex },
+        { action: regex },
+        { actorEmail: regex },
+        { actorUID: regex },
+        { entityId: regex },
+        { "metadata.ipAddress": regex },
+        { "metadata.userAgent": regex },
+        { "metadata.orderId": regex },
+        { "metadata.supplierUID": regex }
+      ]
+    }
+  }
+
+  const logs = await ActivityLog.find(filter)
     .sort({ createdAt: -1 })
     .limit(limit)
     .lean()

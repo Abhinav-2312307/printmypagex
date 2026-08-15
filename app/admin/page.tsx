@@ -1,9 +1,11 @@
 "use client"
 
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
+import { Rnd } from "react-rnd"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { onAuthStateChanged, signOut } from "firebase/auth"
 import { useRouter } from "next/navigation"
+import { RawDatabaseEditor } from "./components/RawDatabaseEditor"
 import {
   Activity,
   AlertTriangle,
@@ -148,6 +150,7 @@ type AdminSupplier = {
 
 type AdminOrder = {
   _id: string
+  shortId?: string
   userUID: string
   supplierUID?: string | null
   requestType?: "global" | "specific"
@@ -176,6 +179,7 @@ type AdminOrder = {
   acceptedAt?: string | null
   deliveredAt?: string | null
   cancelledAt?: string | null
+  files?: any[]
   createdAt: string
   user?: { name?: string; email?: string } | null
   supplier?: { name?: string; email?: string; approved?: boolean; active?: boolean } | null
@@ -422,6 +426,8 @@ export default function AdminPortalPage() {
   const [payments, setPayments] = useState<PaymentLog[]>([])
   const [payoutRequests, setPayoutRequests] = useState<AdminPayoutRequest[]>([])
   const [feedbacks, setFeedbacks] = useState<AdminFeedback[]>([])
+  const [searchOrderId, setSearchOrderId] = useState("")
+  const [searchingOrder, setSearchingOrder] = useState(false)
   const [activityLogs, setActivityLogs] = useState<AdminActivityLog[]>([])
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({
     landingFeedbackVisible: true,
@@ -478,6 +484,10 @@ export default function AdminPortalPage() {
   const [payoutNotes, setPayoutNotes] = useState<Record<string, string>>({})
   const [logQuery, setLogQuery] = useState("")
   const [logLevelFilter, setLogLevelFilter] = useState<"ALL" | "info" | "success" | "warning" | "error">("ALL")
+  
+  const [rawEditorOpen, setRawEditorOpen] = useState(false)
+  const [rawEditorCollection, setRawEditorCollection] = useState<"orders" | "users" | "suppliers">("orders")
+  const [rawEditorId, setRawEditorId] = useState("")
 
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [selectedSupplier, setSelectedSupplier] = useState<AdminSupplier | null>(null)
@@ -590,6 +600,49 @@ export default function AdminPortalPage() {
     })
     setFaqContent(faqsRes.content || defaultFaqContentSnapshot)
     setLastSyncedAt(new Date())
+  }, [adminFetch])
+
+  const handleSearchOrder = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!searchOrderId.trim()) return
+
+    try {
+      setSearchingOrder(true)
+      const res = await adminFetch<{ success: boolean; orderId?: string; message?: string }>(
+        `/api/admin/search-order?shortId=${encodeURIComponent(searchOrderId.trim())}`
+      )
+      
+      if (res && res.success && res.orderId) {
+        setRawEditorCollection("orders")
+        setRawEditorId(res.orderId)
+        setRawEditorOpen(true)
+        setShowControlHub(false)
+        setSearchOrderId("")
+      } else {
+        alert(res?.message || "Order not found")
+      }
+    } catch (error) {
+      alert("Error searching order")
+    } finally {
+      setSearchingOrder(false)
+    }
+  }
+
+  const fetchLogs = useCallback(async (query: string) => {
+    try {
+      setBusyAction("search-logs")
+      const params = new URLSearchParams()
+      params.set("limit", "500")
+      if (query.trim()) {
+        params.set("q", query.trim())
+      }
+      const logsRes = await adminFetch<{ logs: AdminActivityLog[] }>(`/api/admin/logs?${params.toString()}`)
+      if (logsRes && logsRes.logs) {
+        setActivityLogs(logsRes.logs)
+      }
+    } finally {
+      setBusyAction("")
+    }
   }, [adminFetch])
 
   const refreshAll = useCallback(
@@ -1339,7 +1392,7 @@ export default function AdminPortalPage() {
       .map((order) => ({
         key: `order-${order._id}`,
         kind: "order" as const,
-        title: `Order ${String(order._id).slice(-8)}`,
+        title: `Order ${order.shortId || String(order._id).slice(-8)}`,
         subtitle: `${order.user?.name || "Unknown"} • ${formatStatus(order.status)}`,
         meta: formatCurrency(order.finalPrice ?? order.estimatedPrice)
       }))
@@ -2929,6 +2982,19 @@ export default function AdminPortalPage() {
                 </select>
 
                 <button
+                  onClick={() => fetchLogs(logQuery)}
+                  disabled={busyAction === "search-logs"}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-medium transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {busyAction === "search-logs" ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Search className="w-4 h-4" />
+                  )}
+                  Search DB
+                </button>
+
+                <button
                   onClick={() =>
                     downloadCsv(
                       "admin-activity-logs.csv",
@@ -2984,6 +3050,14 @@ export default function AdminPortalPage() {
                               </button>
                             ) : null}
                           </div>
+
+                          {log.metadata && Object.keys(log.metadata).length > 0 && (
+                            <div className="mt-3 bg-black/5 dark:bg-black/40 rounded-xl p-3 overflow-x-auto border border-gray-200 dark:border-white/10">
+                              <pre className="text-[10px] sm:text-[11px] font-mono text-gray-600 dark:text-gray-400">
+                                {JSON.stringify(log.metadata, null, 2)}
+                              </pre>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -3203,13 +3277,22 @@ export default function AdminPortalPage() {
             aria-label="Close control hub"
           />
 
-          <motion.div 
-            drag 
-            dragMomentum={false}
-            className="relative w-[min(980px,94vw)] mt-[8vh] mx-auto rounded-3xl border border-gray-200 dark:border-white/20 bg-white/85 dark:bg-black/80 backdrop-blur-3xl shadow-[0_20px_80px_rgba(0,0,0,0.45)] flex flex-col"
-            style={{ maxHeight: "85vh", resize: "both", overflow: "hidden" }}
+          {/* We remove absolute inset-0 from this container to let Rnd freely drag over the screen */}
+          <Rnd 
+            default={{
+              x: typeof window !== "undefined" ? window.innerWidth / 2 - 490 : 0,
+              y: typeof window !== "undefined" ? window.innerHeight * 0.1 : 0,
+              width: 980,
+              height: typeof window !== "undefined" ? window.innerHeight * 0.8 : 600,
+            }}
+            minWidth={600}
+            minHeight={400}
+            bounds="window"
+            dragHandleClassName="control-hub-handle"
+            className="rounded-3xl border border-gray-200 dark:border-white/20 bg-white/90 dark:bg-black/90 backdrop-blur-3xl shadow-[0_20px_80px_rgba(0,0,0,0.5)] flex flex-col z-[150] overflow-hidden"
+            style={{ position: "fixed" }}
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-white/10 cursor-move">
+            <div className="control-hub-handle flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-white/10 cursor-move bg-black/5 dark:bg-white/5">
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full bg-rose-500" />
@@ -3250,6 +3333,34 @@ export default function AdminPortalPage() {
               </div>
 
               <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+                <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 px-4 py-4 md:col-span-2 xl:col-span-3">
+                  <form onSubmit={handleSearchOrder} className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div className="flex-1">
+                      <p className="font-medium">Search Order Database</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                        Find an order by its short ID (e.g. ORD-XXXXX) to open it in the raw database editor.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={searchOrderId}
+                        onChange={(e) => setSearchOrderId(e.target.value)}
+                        placeholder="ORD-..."
+                        className="w-full md:w-48 px-3 py-2 rounded-xl bg-white/80 dark:bg-black/30 border border-gray-200 dark:border-white/20 text-sm"
+                      />
+                      <button
+                        type="submit"
+                        disabled={searchingOrder || !searchOrderId.trim()}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-medium transition disabled:opacity-50"
+                      >
+                        {searchingOrder ? "Searching..." : "Search"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
                 <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 px-4 py-4 md:col-span-2 xl:col-span-3">
                   <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div>
@@ -3375,7 +3486,7 @@ export default function AdminPortalPage() {
                 </button>
               </div>
             </div>
-          </motion.div>
+          </Rnd>
         </div>
       ) : null}
 
@@ -3390,8 +3501,21 @@ export default function AdminPortalPage() {
             aria-label="Close order stats workspace"
           />
 
-          <div className="relative w-[min(1240px,95vw)] mt-[6vh] mx-auto rounded-3xl border border-gray-200 dark:border-white/20 bg-white/90 dark:bg-black/85 backdrop-blur-3xl shadow-[0_20px_80px_rgba(0,0,0,0.45)] overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-white/10">
+          <Rnd 
+            default={{
+              x: typeof window !== "undefined" ? window.innerWidth / 2 - 620 : 0,
+              y: typeof window !== "undefined" ? window.innerHeight * 0.1 : 0,
+              width: 1240,
+              height: typeof window !== "undefined" ? window.innerHeight * 0.8 : 800,
+            }}
+            minWidth={800}
+            minHeight={400}
+            bounds="window"
+            dragHandleClassName="workspace-handle"
+            className="rounded-3xl border border-gray-200 dark:border-white/20 bg-white/90 dark:bg-black/85 backdrop-blur-3xl shadow-[0_20px_80px_rgba(0,0,0,0.5)] flex flex-col z-[150] overflow-hidden"
+            style={{ position: "fixed" }}
+          >
+            <div className="workspace-handle flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-white/10 cursor-move bg-black/5 dark:bg-white/5">
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full bg-rose-500" />
@@ -3536,7 +3660,7 @@ export default function AdminPortalPage() {
                 ) : null}
               </div>
             </div>
-          </div>
+          </Rnd>
         </div>
       ) : null}
 
@@ -3619,23 +3743,52 @@ export default function AdminPortalPage() {
                   <p className="font-medium mt-1">{workspaceOrderDetail.instruction || "-"}</p>
                 </div>
 
-                {workspaceOrderDetail.pdfPasswordRequired ? (
+                {/* File list support */}
+                {workspaceOrderDetail.files && workspaceOrderDetail.files.length > 0 ? (
                   <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 p-3">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">PDF Password</p>
-                    <p className="font-medium mt-1">{workspaceOrderDetail.pdfPassword || "-"}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Uploaded Files ({workspaceOrderDetail.files.length})</p>
+                    <div className="flex flex-col gap-2">
+                      {workspaceOrderDetail.files.map((file: any, i: number) => (
+                        <div key={i} className="flex flex-col gap-1 rounded-xl border border-gray-200 dark:border-white/10 p-2">
+                          <a
+                            href={file.fileURL}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm font-medium hover:underline text-indigo-600 dark:text-cyan-400 truncate"
+                          >
+                            {file.fileOriginalName || `File ${i + 1}`}
+                          </a>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <span>{file.pages} pages</span>
+                            {file.pdfPasswordRequired && (
+                              <span className="text-amber-500 font-medium">PW: {file.pdfPassword || "Required"}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ) : null}
+                ) : (
+                  <>
+                    {workspaceOrderDetail.pdfPasswordRequired ? (
+                      <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 p-3">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">PDF Password</p>
+                        <p className="font-medium mt-1">{workspaceOrderDetail.pdfPassword || "-"}</p>
+                      </div>
+                    ) : null}
 
-                {workspaceOrderDetail.fileURL ? (
-                  <a
-                    href={workspaceOrderDetail.fileURL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center justify-center rounded-xl border border-gray-200 dark:border-white/20 bg-white/80 dark:bg-white/5 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-white/10"
-                  >
-                    Open Uploaded File
-                  </a>
-                ) : null}
+                    {workspaceOrderDetail.fileURL ? (
+                      <a
+                        href={workspaceOrderDetail.fileURL}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center rounded-xl border border-gray-200 dark:border-white/20 bg-white/80 dark:bg-white/5 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-white/10"
+                      >
+                        Open Uploaded File
+                      </a>
+                    ) : null}
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -3676,6 +3829,20 @@ export default function AdminPortalPage() {
                 className="w-9 h-9 rounded-full border border-gray-200 dark:border-white/20 bg-white/70 dark:bg-white/5 flex items-center justify-center"
               >
                 ✕
+              </button>
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => {
+                  setRawEditorCollection("users")
+                  setRawEditorId(selectedUser._id || "")
+                  setRawEditorOpen(true)
+                }}
+                className="px-4 py-2 bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 border border-yellow-500/20 rounded-xl text-sm font-medium transition flex items-center gap-2"
+              >
+                <Wrench className="w-4 h-4" />
+                Edit (Raw)
               </button>
             </div>
 
@@ -3887,6 +4054,20 @@ export default function AdminPortalPage() {
               </button>
             </div>
 
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => {
+                  setRawEditorCollection("suppliers")
+                  setRawEditorId(selectedSupplier._id || "")
+                  setRawEditorOpen(true)
+                }}
+                className="px-4 py-2 bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 border border-yellow-500/20 rounded-xl text-sm font-medium transition flex items-center gap-2"
+              >
+                <Wrench className="w-4 h-4" />
+                Edit (Raw)
+              </button>
+            </div>
+
             <div className="grid grid-cols-2 gap-3 mt-6">
               <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 p-3">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Approval</p>
@@ -4033,14 +4214,27 @@ export default function AdminPortalPage() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-indigo-500 dark:text-cyan-300">Order Diagnostics</p>
-                <h3 className="text-2xl font-semibold mt-2">{String(selectedOrder._id).slice(-10)}</h3>
+                <h3 className="text-2xl font-semibold mt-2">{selectedOrder.shortId || String(selectedOrder._id).slice(-10)}</h3>
               </div>
-              <button
-                onClick={() => setSelectedOrder(null)}
-                className="w-9 h-9 rounded-full border border-gray-200 dark:border-white/20 bg-white/70 dark:bg-white/5 flex items-center justify-center"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setRawEditorCollection("orders")
+                    setRawEditorId(selectedOrder._id)
+                    setRawEditorOpen(true)
+                  }}
+                  className="px-3 py-1.5 bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 border border-yellow-500/20 rounded-lg text-xs font-medium transition flex items-center gap-1"
+                >
+                  <Wrench className="w-3 h-3" />
+                  Edit (Raw)
+                </button>
+                <button
+                  onClick={() => setSelectedOrder(null)}
+                  className="w-9 h-9 rounded-full border border-gray-200 dark:border-white/20 bg-white/70 dark:bg-white/5 flex items-center justify-center"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-3">
@@ -4324,6 +4518,17 @@ export default function AdminPortalPage() {
           </aside>
         </div>
       ) : null}
+
+      {rawEditorOpen && rawEditorId && (
+        <RawDatabaseEditor
+          collection={rawEditorCollection}
+          documentId={rawEditorId}
+          onClose={() => setRawEditorOpen(false)}
+          onSuccess={() => {
+            loadAll()
+          }}
+        />
+      )}
     </main>
   )
 }
