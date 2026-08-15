@@ -520,15 +520,16 @@ export default function CreateOrderPage() {
                       <label className="text-xs text-gray-400 shrink-0 w-16">Pages:</label>
                       {requiresManualPageCount(entry.file) ? (
                         <div className="flex-1">
-                          <input
-                            type="number"
-                            min="1"
-                            value={entry.pageCount}
-                            onChange={(e) =>
-                              updateFileEntry(entry.id, {
-                                pageCount: e.target.value.replace(/\D/g, "")
-                              })
-                            }
+                            <input
+                              type="number"
+                              min="1"
+                              max="500"
+                              value={entry.pageCount}
+                              onChange={(e) => {
+                                let val = e.target.value.replace(/\D/g, "")
+                                if (Number(val) > 500) val = "500"
+                                updateFileEntry(entry.id, { pageCount: val })
+                              }}
                             placeholder="Enter page count"
                             className="w-full bg-dark p-2 rounded-lg border border-gray-700 text-sm"
                           />
@@ -545,12 +546,13 @@ export default function CreateOrderPage() {
                               <input
                                 type="number"
                                 min="1"
+                                max="500"
                                 value={entry.pageCount}
-                                onChange={(e) =>
-                                  updateFileEntry(entry.id, {
-                                    pageCount: e.target.value.replace(/\D/g, "")
-                                  })
-                                }
+                                onChange={(e) => {
+                                  let val = e.target.value.replace(/\D/g, "")
+                                  if (Number(val) > 500) val = "500"
+                                  updateFileEntry(entry.id, { pageCount: val })
+                                }}
                                 className="w-16 bg-dark p-1 rounded border border-gray-700 text-xs inline"
                               />
                               )
@@ -676,9 +678,14 @@ export default function CreateOrderPage() {
               <input
                 type="number"
                 min="1"
+                max="500"
                 required
                 value={copies}
-                onChange={(e) => setCopies(e.target.value.replace(/\D/g, ""))}
+                onChange={(e) => {
+                  let val = e.target.value.replace(/\D/g, "")
+                  if (Number(val) > 500) val = "500"
+                  setCopies(val)
+                }}
                 placeholder="Copies"
                 className="w-32 bg-dark p-3 rounded-lg border border-gray-700"
               />
