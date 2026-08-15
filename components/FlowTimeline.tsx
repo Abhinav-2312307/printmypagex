@@ -19,8 +19,8 @@ useEffect(()=>{
 const canvas = canvasRef.current!
 const ctx = canvas.getContext("2d")!
 
-let width = canvas.offsetWidth
-let height = canvas.offsetHeight
+const width = canvas.offsetWidth
+const height = canvas.offsetHeight
 
 canvas.width = width
 canvas.height = height
@@ -44,7 +44,7 @@ prev.push({x,y})
 const gravity = 0.12
 const friction = 0.999
 
-let mouse = {x:0,y:0,active:false}
+const mouse = {x:0,y:0,active:false}
 
 canvas.addEventListener("mousemove",(e)=>{
 const rect = canvas.getBoundingClientRect()
@@ -61,11 +61,11 @@ function update(){
 
 for(let i=1;i<points.length;i++){
 
-let p = points[i]
-let pr = prev[i]
+const p = points[i]
+const pr = prev[i]
 
-let vx = (p.x-pr.x)*friction
-let vy = (p.y-pr.y)*friction
+const vx = (p.x-pr.x)*friction
+const vy = (p.y-pr.y)*friction
 
 prev[i] = {x:p.x,y:p.y}
 
@@ -74,9 +74,9 @@ p.y += vy + gravity
 
 if(mouse.active){
 
-let dx = p.x-mouse.x
-let dy = p.y-mouse.y
-let dist = Math.sqrt(dx*dx+dy*dy)
+const dx = p.x-mouse.x
+const dy = p.y-mouse.y
+const dist = Math.sqrt(dx*dx+dy*dy)
 
 if(dist<80){
 
@@ -99,18 +99,18 @@ for(let k=0;k<6;k++){
 
 for(let i=0;i<segments;i++){
 
-let p1 = points[i]
-let p2 = points[i+1]
+const p1 = points[i]
+const p2 = points[i+1]
 
-let dx = p2.x-p1.x
-let dy = p2.y-p1.y
+const dx = p2.x-p1.x
+const dy = p2.y-p1.y
 
-let dist = Math.sqrt(dx*dx+dy*dy)
+const dist = Math.sqrt(dx*dx+dy*dy)
 
-let diff = (dist-(ropeLength/segments))/dist
+const diff = (dist-(ropeLength/segments))/dist
 
-let offX = dx*0.5*diff
-let offY = dy*0.5*diff
+const offX = dx*0.5*diff
+const offY = dy*0.5*diff
 
 if(i!==0){
 p1.x += offX
