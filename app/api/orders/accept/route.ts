@@ -183,6 +183,7 @@ export async function POST(req: Request) {
     entityId: String(order._id),
     level: "success",
     message: `Supplier accepted order ${String(order._id).slice(-8)} and verified ${verifiedPages} pages for ${copies} copies`,
+    req,
     metadata: {
       orderId: String(order._id),
       userUID: String(order.userUID),

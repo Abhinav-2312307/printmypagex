@@ -12,6 +12,12 @@ const OrderSchema = new mongoose.Schema({
     default:null
   },
 
+  shortId:{
+    type:String,
+    unique:true,
+    sparse:true
+  },
+
   requestType:{
     type:String,
     enum:["global","specific"],
@@ -280,6 +286,7 @@ const OrderSchema = new mongoose.Schema({
 OrderSchema.index({ userUID: 1, createdAt: -1 })
 OrderSchema.index({ supplierUID: 1, createdAt: -1 })
 OrderSchema.index({ status: 1, requestType: 1, supplierUID: 1, createdAt: -1 })
+OrderSchema.index({ shortId: 1 })
 OrderSchema.index({ razorpayOrderId: 1 })
 OrderSchema.index({ paymentStatus: 1, paidAt: -1 })
 OrderSchema.index({ fileAccessToken: 1 }, { unique: true, sparse: true })

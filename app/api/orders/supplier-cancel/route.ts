@@ -101,6 +101,7 @@ entityType:"order",
 entityId:String(order._id),
 level:"warning",
 message:`Supplier cancelled order ${String(order._id).slice(-8)}`,
+req,
 metadata:{
 orderId:String(order._id),
 userUID:String(order.userUID),

@@ -181,6 +181,7 @@ export async function POST(req: Request) {
       entityId: String(order._id),
       level: "success",
       message: `Payment verified for order ${String(order._id).slice(-8)}`,
+      req,
       metadata: {
         orderId: String(order._id),
         userUID,

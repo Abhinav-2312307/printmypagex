@@ -171,6 +171,7 @@ export async function POST(req: Request) {
     message: nextDiscountPercent > 0
       ? `Supplier applied ${nextDiscountPercent}% discount (₹${nextDiscountAmount}) on order ${String(order._id).slice(-8)}`
       : `Supplier removed discount on order ${String(order._id).slice(-8)}`,
+    req,
     metadata: {
       orderId: String(order._id),
       discountPercent: nextDiscountPercent,

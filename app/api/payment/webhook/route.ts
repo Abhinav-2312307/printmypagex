@@ -97,6 +97,7 @@ export async function POST(req: Request) {
         entityId: String(order._id),
         level: "warning",
         message: `Ignored captured payment webhook for cancelled order ${String(order._id).slice(-8)}`,
+        req,
         metadata: {
           orderId: String(order._id),
           razorpayOrderId: String(payment.order_id),
@@ -148,6 +149,7 @@ export async function POST(req: Request) {
         entityId: String(order._id),
         level: "success",
         message: `Webhook captured payment for order ${String(order._id).slice(-8)}`,
+        req,
         metadata: {
           orderId: String(order._id),
           userUID: String(order.userUID),

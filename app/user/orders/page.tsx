@@ -37,6 +37,7 @@ type OrderFileEntry = {
 
 type UserOrder = {
 _id: string
+shortId?: string
 supplierUID?: string | null
 status: string
 paymentStatus: string
@@ -530,14 +531,20 @@ className={`px-4 py-1 text-xs rounded-full font-semibold tracking-wide ${getStat
 </div>
 
 <div className="flex justify-between text-gray-500 text-xs mt-4">
-
 <span>Placed On</span>
-
 <span>
 {new Date(order.createdAt).toLocaleDateString()}
 </span>
-
 </div>
+
+{order.shortId && (
+<div className="flex justify-between text-gray-500 text-xs mt-2">
+<span>Order ID</span>
+<span className="font-mono bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded">
+{order.shortId}
+</span>
+</div>
+)}
 
 </div>
 
@@ -590,6 +597,10 @@ className="mt-4 w-full bg-green-500 px-4 py-2 rounded-xl font-semibold disabled:
 <h2 className="text-2xl font-bold text-gradient">
 Order Details
 </h2>
+
+{selectedOrder.shortId && (
+<p className="text-gray-500 font-mono text-xs">ID: {selectedOrder.shortId}</p>
+)}
 
 <p>Pages Per Copy: {selectedOrder.verifiedPages ?? selectedOrder.pages}</p>
 <p>Copies: {selectedOrder.copies ?? 1}</p>

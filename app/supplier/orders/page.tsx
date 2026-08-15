@@ -13,6 +13,7 @@ import { usePrintPricing } from "@/lib/use-print-pricing"
 
 type SupplierOrderDetail = {
   _id: string
+  shortId?: string
   status: string
   paymentStatus: string
   createdAt: string
@@ -507,9 +508,14 @@ className="bg-card p-5 sm:p-7 md:p-10 rounded-3xl hover:scale-[1.02] transition 
 
 <div className="flex justify-between items-center mb-6">
 
+<div className="flex flex-col gap-1">
 <p className="text-2xl font-bold text-gradient">
 {(order.printType || "bw").toUpperCase()} Print
 </p>
+<p className="text-xs font-mono text-gray-400">
+#{order.shortId || String(order._id).slice(-8)}
+</p>
+</div>
 
 <span
 className={`px-5 py-1.5 text-xs rounded-full font-semibold tracking-wide ${getStatusColor(order.status)}`}
@@ -657,8 +663,11 @@ Cancel
 
 <div className="space-y-4 text-sm">
 
-<h2 className="text-2xl font-bold text-gradient">
-Order Details
+<h2 className="text-2xl font-bold text-gradient flex flex-col gap-1">
+  <span>Order Details</span>
+  <p className="text-sm text-gray-400 mt-2">
+  Order: <span className="font-mono text-gray-200">{selectedOrder.shortId || String(selectedOrder._id).slice(-8)}</span>
+</p>
 </h2>
 
 {/* <p>User: {selectedOrder.userName}</p>

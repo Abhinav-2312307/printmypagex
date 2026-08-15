@@ -36,6 +36,8 @@ import {
 } from "@/lib/submission-protection"
 import { recordActivity } from "@/lib/activity-log"
 
+import crypto from "crypto"
+
 export const runtime = "nodejs"
 
 const require = createRequire(import.meta.url)
@@ -628,6 +630,8 @@ export async function POST(req: Request) {
       )
     }
 
+
+
     if (!appendOrderId) {
       if (!VALID_PRINT_TYPES.has(printType)) {
         return NextResponse.json(
@@ -803,6 +807,7 @@ export async function POST(req: Request) {
       
       await order.save()
     } else {
+      const shortId = `PMP-${crypto.randomBytes(4).toString("hex").toUpperCase()}`
       // Price calculation
       const pricing = await getPrintPricing()
       const wantsSpiralBinding = spiralBinding === "true"
@@ -815,6 +820,7 @@ export async function POST(req: Request) {
       const firstFile = processedFiles[0]
 
       order = await Order.create({
+        shortId,
 
         userUID: firebaseUID,
 
@@ -902,6 +908,7 @@ export async function POST(req: Request) {
         entityId: String(order._id),
         level: "success",
         message: `User created order ${String(order._id).slice(-8)} with ${fileCountToSave} file(s)`,
+        req,
         metadata: {
           orderId: String(order._id),
           userUID: firebaseUID,
