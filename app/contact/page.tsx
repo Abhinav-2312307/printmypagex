@@ -134,92 +134,58 @@ Support Hours
 </div>
 
 
+
 <div className="group">
 
-<h3 className="text-lg font-semibold mb-1 group-hover:text-green-400 transition">
+<h3 className="text-lg font-semibold mb-1 group-hover:text-indigo-400 transition">
 Quick Chat
 </h3>
-
-<p className="text-gray-500 dark:text-gray-400 text-sm mb-3">
-DM us directly on WhatsApp for instant help
-</p>
 
 <a
 href="https://wa.me/919793404007"
 target="_blank"
 rel="noopener noreferrer"
 className="
-relative
-inline-flex items-center gap-3
-px-5 py-3
-rounded-2xl
-bg-gradient-to-br from-green-400 to-emerald-500
-text-white font-semibold text-sm
-shadow-[0_4px_25px_rgba(37,211,102,0.35)]
-hover:shadow-[0_8px_40px_rgba(37,211,102,0.55)]
-hover:scale-105
-hover:-translate-y-[2px]
-active:scale-95
+inline-flex items-center gap-2.5
+mt-1 px-4 py-2
+rounded-xl
+backdrop-blur-xl
+bg-white/5
+border border-white/10
+text-gray-400
+hover:text-white
+hover:border-indigo-400/40
+hover:bg-white/10
+hover:shadow-[0_0_20px_rgba(99,102,241,0.15)]
+hover:scale-[1.03]
+hover:-translate-y-[1px]
+active:scale-[0.98]
 transition-all duration-300
 ease-[cubic-bezier(.34,1.56,.64,1)]
 group/wa
-overflow-hidden
+text-sm
 "
 >
 
-{/* Animated pulse ring behind logo */}
-<span className="
-absolute left-[18px]
-w-9 h-9
-rounded-full
-bg-white/20
-animate-ping
-pointer-events-none
-"/>
-
-{/* Custom WhatsApp SVG Logo — rounded square style with chat bubble accent */}
-<span className="
-relative
-w-9 h-9
-flex items-center justify-center
-rounded-xl
-bg-white/20
-backdrop-blur-sm
-border border-white/30
-transition-all duration-300
-group-hover/wa:rotate-[8deg]
-group-hover/wa:bg-white/30
-shrink-0
-">
-<svg viewBox="0 0 32 32" fill="none" className="w-5 h-5">
-{/* Outer speech-bubble shape */}
+{/* WhatsApp icon with subtle green accent */}
+<svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 shrink-0 transition-transform duration-300 group-hover/wa:rotate-[-8deg]">
 <path
-d="M16 3C8.82 3 3 8.28 3 14.82c0 3.72 1.84 7.06 4.74 9.32L6.5 29l5.24-2.72c1.34.38 2.78.58 4.26.58 7.18 0 13-5.28 13-11.82S23.18 3 16 3Z"
-fill="white"
-fillOpacity="0.95"
+d="M12 2C6.48 2 2 6.24 2 11.38c0 2.72 1.36 5.16 3.5 6.82L4.6 22l4.08-2.1c1 .28 2.14.44 3.32.44 5.52 0 10-4.24 10-9.38S17.52 2 12 2Z"
+className="fill-emerald-400/80 group-hover/wa:fill-emerald-400 transition-colors duration-300"
 />
-{/* Phone icon inside */}
 <path
-d="M21.36 18.73c-.58-.29-3.44-1.7-3.98-1.89-.54-.2-.93-.29-1.32.29-.39.58-1.52 1.89-1.87 2.28-.34.39-.69.33-1.27.04-.58-.29-2.46-.91-4.69-2.9-1.73-1.55-2.9-3.46-3.24-4.04-.34-.58-.04-.9.26-1.19.27-.26.58-.68.87-1.02.29-.34.39-.58.58-.97.2-.39.1-.73-.05-1.02-.15-.29-1.32-3.18-1.81-4.36-.48-1.14-.96-1-.1.32-1H9.45c-.34 0-.9.13-1.37.63s-1.8 1.76-1.8 4.29 1.84 4.97 2.1 5.31c.26.34 3.62 5.53 8.77 7.76 1.23.53 2.18.85 2.93 1.09 1.23.39 2.35.33 3.24.2.99-.15 3.05-1.25 3.48-2.45.43-1.21.43-2.24.3-2.45-.13-.22-.52-.34-1.1-.63Z"
-fill="#25D366"
+d="M16.5 14.2c-.42-.22-2.52-1.24-2.92-1.38-.4-.15-.68-.22-.96.22-.28.43-1.12 1.38-1.37 1.67-.25.28-.5.24-.93.03-.42-.22-1.8-.67-3.43-2.12-1.27-1.13-2.12-2.53-2.37-2.96-.25-.43-.03-.66.19-.87.2-.2.42-.5.64-.75.2-.25.28-.43.42-.71.15-.28.07-.53-.03-.75-.1-.21-.96-2.32-1.32-3.18-.35-.84-.7-.73-.96-.74h-.56c-.25 0-.66.1-1 .46-.35.36-1.32 1.28-1.32 3.13s1.35 3.63 1.54 3.88c.19.25 2.65 4.04 6.42 5.67.9.39 1.6.62 2.14.8.9.28 1.72.24 2.37.15.72-.1 2.23-.91 2.55-1.79.31-.88.31-1.64.22-1.79-.1-.16-.38-.25-.8-.46Z"
+fill="white"
 />
 </svg>
+
+<span className="font-medium tracking-wide">
+DM on WhatsApp
 </span>
 
-<span className="relative z-10 tracking-wide">
-WhatsApp Us
+<span className="text-[10px] text-gray-600 group-hover/wa:text-gray-400 transition-colors">
+↗
 </span>
-
-{/* Shimmer sweep effect */}
-<span className="
-absolute inset-0
-bg-gradient-to-r from-transparent via-white/20 to-transparent
-translate-x-[-200%]
-group-hover/wa:translate-x-[200%]
-transition-transform duration-700
-ease-out
-pointer-events-none
-"/>
 
 </a>
 
