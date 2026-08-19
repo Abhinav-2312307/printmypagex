@@ -1,14 +1,33 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useCallback } from "react"
 import { Linkedin, Github, Globe } from "lucide-react"
+import Image from "next/image"
 
 export default function CreatorFooter(){
 
-const [hover,setHover] = useState(false)
-const [open,setOpen] = useState(false)
+const [hoverTrigger,setHoverTrigger] = useState(false)
+const [hoverPopup,setHoverPopup] = useState(false)
+const [pinned,setPinned] = useState(false)
 
-const visible = hover || open
+const closeTimer = useRef<ReturnType<typeof setTimeout>|null>(null)
+
+const clearCloseTimer = useCallback(()=>{
+  if(closeTimer.current){
+    clearTimeout(closeTimer.current)
+    closeTimer.current = null
+  }
+},[])
+
+const startCloseTimer = useCallback(()=>{
+  clearCloseTimer()
+  closeTimer.current = setTimeout(()=>{
+    setHoverTrigger(false)
+    setHoverPopup(false)
+  },150)
+},[clearCloseTimer])
+
+const visible = hoverTrigger || hoverPopup || pinned
 
 return(
 
@@ -19,9 +38,9 @@ return(
 Made with ❤️ by{" "}
 
 <span
-onMouseEnter={()=>setHover(true)}
-onMouseLeave={()=>setHover(false)}
-onClick={()=>setOpen(!open)}
+onMouseEnter={()=>{clearCloseTimer(); setHoverTrigger(true)}}
+onMouseLeave={()=>startCloseTimer()}
+onClick={()=>setPinned(p=>!p)}
 className="
 cursor-pointer
 font-semibold
@@ -47,8 +66,8 @@ Abhinav Sahu
 {visible &&(
 
 <div
-onMouseEnter={()=>setHover(true)}
-onMouseLeave={()=>setHover(false)}
+onMouseEnter={()=>{clearCloseTimer(); setHoverPopup(true)}}
+onMouseLeave={()=>{setHoverPopup(false); if(!pinned) startCloseTimer()}}
 className="
 absolute bottom-10
 backdrop-blur-2xl
@@ -56,7 +75,7 @@ bg-white/80 dark:bg-white/5
 border border-gray-200 dark:border-white/10
 shadow-[0_20px_60px_rgba(0,0,0,0.4)]
 rounded-2xl
-p-6
+p-6 pt-10
 w-[300px]
 text-center
 transition-all duration-300
@@ -64,6 +83,27 @@ ease-[cubic-bezier(.34,1.56,.64,1)]
 scale-100
 "
 >
+
+{/* Avatar — peeking above card */}
+<div className="absolute -top-7 left-1/2 -translate-x-1/2">
+
+{/* Soft glow behind */}
+<div className="absolute inset-0 rounded-full bg-gradient-to-br from-indigo-400/40 to-cyan-400/40 blur-lg scale-150 pointer-events-none"/>
+
+{/* Gradient ring */}
+<div className="relative w-14 h-14 rounded-full p-[2px] bg-gradient-to-br from-indigo-400 via-cyan-400 to-indigo-400">
+<div className="w-full h-full rounded-full overflow-hidden bg-gray-900">
+<Image
+src="/abhinav-v2.jpg"
+alt="Abhinav Sahu"
+width={56}
+height={56}
+className="w-full h-full object-cover object-top"
+/>
+</div>
+</div>
+
+</div>
 
 <h3 className="text-lg font-semibold">
 Abhinav Sahu
@@ -110,7 +150,7 @@ hover:shadow-[0_6px_20px_rgba(80,120,255,0.35)]
 
 
 <a
-href="https://portfolio-abhinavsahu.vercel.app/"
+href="https://abhinavsahu.me/"
 target="_blank"
 className="
 w-10 h-10
