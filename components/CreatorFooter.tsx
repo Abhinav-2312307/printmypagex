@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from "react"
 import { Linkedin, Github, Globe } from "lucide-react"
+import Image from "next/image"
 
 export default function CreatorFooter(){
 
@@ -74,7 +75,7 @@ bg-white/80 dark:bg-white/5
 border border-gray-200 dark:border-white/10
 shadow-[0_20px_60px_rgba(0,0,0,0.4)]
 rounded-2xl
-p-6
+p-6 pt-10
 w-[300px]
 text-center
 transition-all duration-300
@@ -82,6 +83,27 @@ ease-[cubic-bezier(.34,1.56,.64,1)]
 scale-100
 "
 >
+
+{/* Avatar — peeking above card */}
+<div className="absolute -top-7 left-1/2 -translate-x-1/2">
+
+{/* Soft glow behind */}
+<div className="absolute inset-0 rounded-full bg-gradient-to-br from-indigo-400/40 to-cyan-400/40 blur-lg scale-150 pointer-events-none"/>
+
+{/* Gradient ring */}
+<div className="relative w-14 h-14 rounded-full p-[2px] bg-gradient-to-br from-indigo-400 via-cyan-400 to-indigo-400">
+<div className="w-full h-full rounded-full overflow-hidden bg-gray-900">
+<Image
+src="/abhinav-v2.jpg"
+alt="Abhinav Sahu"
+width={56}
+height={56}
+className="w-full h-full object-cover object-top"
+/>
+</div>
+</div>
+
+</div>
 
 <h3 className="text-lg font-semibold">
 Abhinav Sahu
