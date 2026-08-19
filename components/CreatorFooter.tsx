@@ -1,14 +1,32 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useCallback } from "react"
 import { Linkedin, Github, Globe } from "lucide-react"
 
 export default function CreatorFooter(){
 
-const [hover,setHover] = useState(false)
-const [open,setOpen] = useState(false)
+const [hoverTrigger,setHoverTrigger] = useState(false)
+const [hoverPopup,setHoverPopup] = useState(false)
+const [pinned,setPinned] = useState(false)
 
-const visible = hover || open
+const closeTimer = useRef<ReturnType<typeof setTimeout>|null>(null)
+
+const clearCloseTimer = useCallback(()=>{
+  if(closeTimer.current){
+    clearTimeout(closeTimer.current)
+    closeTimer.current = null
+  }
+},[])
+
+const startCloseTimer = useCallback(()=>{
+  clearCloseTimer()
+  closeTimer.current = setTimeout(()=>{
+    setHoverTrigger(false)
+    setHoverPopup(false)
+  },150)
+},[clearCloseTimer])
+
+const visible = hoverTrigger || hoverPopup || pinned
 
 return(
 
@@ -19,9 +37,9 @@ return(
 Made with ❤️ by{" "}
 
 <span
-onMouseEnter={()=>setHover(true)}
-onMouseLeave={()=>setHover(false)}
-onClick={()=>setOpen(!open)}
+onMouseEnter={()=>{clearCloseTimer(); setHoverTrigger(true)}}
+onMouseLeave={()=>startCloseTimer()}
+onClick={()=>setPinned(p=>!p)}
 className="
 cursor-pointer
 font-semibold
@@ -47,8 +65,8 @@ Abhinav Sahu
 {visible &&(
 
 <div
-onMouseEnter={()=>setHover(true)}
-onMouseLeave={()=>setHover(false)}
+onMouseEnter={()=>{clearCloseTimer(); setHoverPopup(true)}}
+onMouseLeave={()=>{setHoverPopup(false); if(!pinned) startCloseTimer()}}
 className="
 absolute bottom-10
 backdrop-blur-2xl
