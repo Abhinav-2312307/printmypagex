@@ -1,7 +1,7 @@
 "use client"
 
 import { FormEvent, useEffect, useState } from "react"
-import { Star } from "lucide-react"
+import { Heart, Star } from "lucide-react"
 import {
   computeOverallFeedbackRating,
   FEEDBACK_ASPECTS,
@@ -27,70 +27,90 @@ function FeedbackThankYouCard({ onReset }: { onReset: () => void }) {
   const [opened, setOpened] = useState(false)
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setOpened(true), 120)
+    const timer = window.setTimeout(() => setOpened(true), 200)
     return () => window.clearTimeout(timer)
   }, [])
 
   return (
-    <div className="flex flex-col items-center gap-6 text-center">
-      <div
-        className="card cursor-pointer"
-        onClick={() => setOpened((current) => !current)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault()
-            setOpened((current) => !current)
-          }
-        }}
-        aria-label="Open thank you card"
-      >
-        <div className="relative flex aspect-video w-[300px] items-center justify-center bg-black sm:w-[350px]">
-          <div
-            className={`absolute h-full w-full bg-white transition-all duration-1000 ${
-              opened ? "-translate-y-16" : ""
-            } flex flex-col items-center justify-start py-5`}
-          >
-            <p className="font-serif text-xl font-semibold text-gray-500 sm:text-2xl">
-              Thank You
-            </p>
-            <p className="px-10 text-[10px] text-gray-700 sm:text-[12px]">
-              It&apos;s so nice that you had the time to view this idea
-            </p>
-            <p className="font-serif text-[10px] text-gray-700 sm:text-[12px]">
-              Wishing you a fantastic day ahead!
-            </p>
-            <p className="pt-5 font-sans text-[10px] text-gray-700">
-              SMOOKYDEV
-            </p>
+    <div className="flex flex-col items-center text-center">
+      {/* Envelope wrapper with top padding to prevent header collision */}
+      <div className="pt-10 pb-2">
+        <div
+          className="card cursor-pointer select-none"
+          onClick={() => setOpened((current) => !current)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault()
+              setOpened((current) => !current)
+            }
+          }}
+          aria-label="Open thank you card"
+        >
+          <div className="relative flex aspect-video w-[310px] items-center justify-center rounded-2xl bg-neutral-950 shadow-2xl transition-transform duration-300 hover:scale-[1.02] sm:w-[360px]">
+            {/* Elegant Letter Inside Envelope */}
+            <div
+              className={`absolute left-3 right-3 top-2 bg-gradient-to-b from-stone-50 via-white to-stone-50 text-neutral-800 transition-all duration-700 ease-out ${
+                opened
+                  ? "-translate-y-14 shadow-[0_-10px_25px_rgba(0,0,0,0.15)] sm:-translate-y-16"
+                  : "translate-y-0 opacity-0"
+              } flex flex-col items-center justify-between rounded-xl border border-neutral-200/90 py-3.5 px-4 sm:py-4`}
+            >
+              <div className="flex items-center gap-1 text-rose-500">
+                <Heart className="h-3 w-3 fill-rose-500" />
+                <span className="font-serif text-[10px] uppercase tracking-widest text-neutral-400">
+                  Note
+                </span>
+              </div>
+
+              <h4 className="font-serif text-base font-bold tracking-tight text-neutral-900 sm:text-lg">
+                Thank You!
+              </h4>
+
+              <p className="px-2 text-[11px] leading-tight text-neutral-600 sm:text-[12px]">
+                Your feedback means a lot to us. Wishing you a great day ahead!
+              </p>
+
+              {/* Signature Line */}
+              <div className="mt-1 flex items-center justify-center gap-1.5 border-t border-neutral-200/70 pt-1.5">
+                <span className="font-sans text-[11px] sm:text-xs font-semibold bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-600 bg-clip-text text-transparent">
+                  Abhinav Sahu
+                </span>
+                <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-600 border border-indigo-200/60">
+                  Admin
+                </span>
+              </div>
+            </div>
+
+            {/* Wax Seal Button */}
+            <button
+              type="button"
+              tabIndex={-1}
+              className={`seal z-40 flex aspect-square w-11 items-center justify-center rounded-full border-2 border-amber-300/30 bg-gradient-to-br from-rose-600 to-rose-800 text-[10px] font-bold tracking-wider text-rose-100 shadow-[0_4px_12px_rgba(225,29,72,0.35)] transition-all duration-700 [clip-path:polygon(50%_0%,_80%_10%,_100%_35%,_100%_70%,_80%_90%,_50%_100%,_20%_90%,_0%_70%,_0%_35%,_20%_10%)] ${
+                opened ? "scale-0 rotate-180 opacity-0" : "scale-100 opacity-100"
+              }`}
+            >
+              PMP
+            </button>
+
+            {/* Envelope Flaps */}
+            <div
+              className={`tp absolute h-full w-full rounded-2xl bg-neutral-800 transition-all ${
+                opened
+                  ? "duration-300 [clip-path:polygon(50%_0%,_100%_0,_0_0)]"
+                  : "duration-700 [clip-path:polygon(50%_50%,_100%_0,_0_0)]"
+              }`}
+            />
+            <div className="lft absolute h-full w-full rounded-2xl bg-neutral-900 [clip-path:polygon(50%_50%,_0_0,_0_100%)]" />
+            <div className="rgt absolute h-full w-full rounded-2xl bg-neutral-800 [clip-path:polygon(50%_50%,_100%_0,_100%_100%)]" />
+            <div className="btm absolute h-full w-full rounded-2xl bg-neutral-900 [clip-path:polygon(50%_50%,_100%_100%,_0_100%)]" />
           </div>
-
-          <button
-            type="button"
-            tabIndex={-1}
-            className={`seal z-40 flex aspect-square w-10 items-center justify-center rounded-full border-4 border-rose-900 bg-rose-500 text-[10px] font-semibold text-red-800 transition-all duration-1000 [clip-path:polygon(50%_0%,_80%_10%,_100%_35%,_100%_70%,_80%_90%,_50%_100%,_20%_90%,_0%_70%,_0%_35%,_20%_10%)] ${
-              opened ? "scale-0 rotate-180 opacity-0" : ""
-            }`}
-          >
-            SMKY
-          </button>
-
-          <div
-            className={`tp absolute h-full w-full bg-neutral-800 transition-all ${
-              opened
-                ? "duration-200 [clip-path:polygon(50%_0%,_100%_0,_0_0)]"
-                : "duration-1000 [clip-path:polygon(50%_50%,_100%_0,_0_0)]"
-            }`}
-          />
-          <div className="lft absolute h-full w-full bg-neutral-900 [clip-path:polygon(50%_50%,_0_0,_0_100%)]" />
-          <div className="rgt absolute h-full w-full bg-neutral-800 [clip-path:polygon(50%_50%,_100%_0,_100%_100%)]" />
-          <div className="btm absolute h-full w-full bg-neutral-900 [clip-path:polygon(50%_50%,_100%_100%,_0_100%)]" />
         </div>
       </div>
 
-      <div className="space-y-3">
-        <p className="text-sm text-gray-600 dark:text-gray-300">
+      <div className="mt-4 space-y-3">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
           Your feedback has been saved. Tap the card to replay the envelope animation.
         </p>
         <button
