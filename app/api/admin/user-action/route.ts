@@ -143,6 +143,38 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, user })
   }
 
+  if (action === "enable_email_notifications" || action === "disable_email_notifications") {
+    const user = await User.findOneAndUpdate(
+      { firebaseUID },
+      { emailNotifications: action === "enable_email_notifications" },
+      { returnDocument: "after" }
+    )
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: "User not found" },
+        { status: 404 }
+      )
+    }
+
+    await recordActivity({
+      actorType: "admin",
+      actorUID: auth.uid,
+      actorEmail: auth.email,
+      action: action === "enable_email_notifications" ? "user.email_notifications_enabled" : "user.email_notifications_disabled",
+      entityType: "user",
+      entityId: firebaseUID,
+      level: "info",
+      message: `Admin ${action === "enable_email_notifications" ? "enabled" : "disabled"} email notifications for user ${user.email || firebaseUID}`,
+      metadata: {
+        firebaseUID,
+        emailNotifications: Boolean(user.emailNotifications)
+      }
+    })
+
+    return NextResponse.json({ success: true, user })
+  }
+
   if (action === "delete") {
     await Promise.all([
       User.deleteOne({ firebaseUID }),

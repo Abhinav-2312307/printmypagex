@@ -488,6 +488,7 @@ export default function Navbar({
                     <img
                       src={avatarPhotoURL}
                       alt={resolvedProfile?.name || "User"}
+                      referrerPolicy="no-referrer"
                       className="h-full w-full object-cover"
                       onError={() => setFailedAvatarUrl(avatarPhotoURL)}
                     />

@@ -116,6 +116,7 @@ type AdminUser = {
   role: UserRole
   approved?: boolean
   active?: boolean
+  emailNotifications?: boolean
   orderCount?: number
   paidCount?: number
   totalSpent?: number
@@ -360,7 +361,9 @@ function copyText(value: string) {
 }
 
 function resolveProfilePhoto(primary?: string, fallback?: string) {
-  return String(primary || fallback || "")
+  const url = String(primary || fallback || "")
+  if (url === "undefined" || url === "null" || url === "null" || !url) return ""
+  return url
 }
 
 function getNameInitial(name?: string, email?: string) {
@@ -3810,6 +3813,7 @@ export default function AdminPortalPage() {
                   <img
                     src={resolveProfilePhoto(selectedUser.photoURL, selectedUser.firebasePhotoURL)}
                     alt={selectedUser.name || "User"}
+                    referrerPolicy="no-referrer"
                     className="w-16 h-16 rounded-2xl object-cover border border-gray-200 dark:border-white/20"
                   />
                 ) : (
@@ -3936,6 +3940,16 @@ export default function AdminPortalPage() {
                       busy={isBusyAction(`activate-${selectedUser.firebaseUID}`, `deactivate-${selectedUser.firebaseUID}`)}
                       onChange={(nextChecked) =>
                         runUserAction(selectedUser.firebaseUID!, nextChecked ? "deactivate" : "activate")
+                      }
+                    />
+                    <StatusToggle
+                      title="Notifications"
+                      checked={selectedUser.emailNotifications !== false}
+                      checkedLabel="Enabled"
+                      uncheckedLabel="Disabled"
+                      busy={isBusyAction(`enable_email_notifications-${selectedUser.firebaseUID}`, `disable_email_notifications-${selectedUser.firebaseUID}`)}
+                      onChange={(nextChecked) =>
+                        runUserAction(selectedUser.firebaseUID!, nextChecked ? "enable_email_notifications" : "disable_email_notifications")
                       }
                     />
                   </>
