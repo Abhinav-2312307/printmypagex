@@ -61,6 +61,7 @@ export default function ProfileAvatar({
         <img
           src={safePhotoURL}
           alt={alt || name || "Profile"}
+          referrerPolicy="no-referrer"
           onError={() => setFailedURL(safePhotoURL)}
           className={`h-full w-full object-cover ${imageClassName}`.trim()}
         />

@@ -361,7 +361,9 @@ function copyText(value: string) {
 }
 
 function resolveProfilePhoto(primary?: string, fallback?: string) {
-  return String(primary || fallback || "")
+  const url = String(primary || fallback || "")
+  if (url === "undefined" || url === "null" || url === "null" || !url) return ""
+  return url
 }
 
 function getNameInitial(name?: string, email?: string) {
@@ -3811,6 +3813,7 @@ export default function AdminPortalPage() {
                   <img
                     src={resolveProfilePhoto(selectedUser.photoURL, selectedUser.firebasePhotoURL)}
                     alt={selectedUser.name || "User"}
+                    referrerPolicy="no-referrer"
                     className="w-16 h-16 rounded-2xl object-cover border border-gray-200 dark:border-white/20"
                   />
                 ) : (

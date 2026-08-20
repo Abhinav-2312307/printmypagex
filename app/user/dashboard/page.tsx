@@ -1262,7 +1262,8 @@ rollNo: String(userData?.rollNo || ""),
 branch: String(userData?.branch || ""),
 section: String(userData?.section || ""),
 year: String(userData?.year || ""),
-phone: String(userData?.phone || "")
+phone: String(userData?.phone || ""),
+emailNotifications: userData?.emailNotifications ?? true
 })
 setPhotoFile(null)
 setPhotoPreview(

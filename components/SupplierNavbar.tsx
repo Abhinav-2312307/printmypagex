@@ -669,6 +669,7 @@ className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-500 
 ? <img
 src={resolvedNavbarPhoto}
 alt={supplier?.name || "Supplier"}
+referrerPolicy="no-referrer"
 className="w-full h-full object-cover"
 onError={()=>setFailedAvatarUrl(resolvedNavbarPhoto)}
 />
