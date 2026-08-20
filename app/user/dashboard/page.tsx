@@ -152,7 +152,8 @@ export default function UserDashboard() {
     branch: "",
     section: "",
     year: "",
-    phone: ""
+    phone: "",
+    emailNotifications: true
   })
 
   const [fileEntries, setFileEntries] = useState<FileEntry[]>([])
@@ -246,7 +247,8 @@ export default function UserDashboard() {
       branch: String(userData.branch || ""),
       section: String(userData.section || ""),
       year: String(userData.year || ""),
-      phone: String(userData.phone || "")
+      phone: String(userData.phone || ""),
+      emailNotifications: userData.emailNotifications ?? true
     })
     setPhotoPreview(
       String(
@@ -640,7 +642,8 @@ export default function UserDashboard() {
           branch: profileForm.branch.trim(),
           section: profileForm.section.trim(),
           year: yearNumber,
-          phone: profileForm.phone.trim()
+          phone: profileForm.phone.trim(),
+          emailNotifications: profileForm.emailNotifications
         })
       })
 
@@ -1209,6 +1212,28 @@ className={`input w-full ${!isEditingProfile ? "opacity-80" : ""}`}
 />
 </div>
 </div>
+</div>
+
+<div className="flex items-center gap-3">
+  <input
+    type="checkbox"
+    id="emailNotifications"
+    checked={profileForm.emailNotifications}
+    onChange={(e) => setProfileForm((prev) => ({ ...prev, emailNotifications: e.target.checked }))}
+    disabled={!isEditingProfile}
+    className={`w-5 h-5 rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-gray-900 transition-colors ${
+      !isEditingProfile ? "opacity-60" : "cursor-pointer"
+    }`}
+  />
+  <label
+    htmlFor="emailNotifications"
+    className={`select-none ${!isEditingProfile ? "opacity-60 text-gray-500" : "cursor-pointer text-gray-300 hover:text-white transition-colors"}`}
+  >
+    <span className="font-medium">Receive Email Notifications</span>
+    <p className="text-sm text-gray-500 mt-0.5">
+      Get automated emails for order updates, payments, etc. (Admin messages will still be sent)
+    </p>
+  </label>
 </div>
 
 <div className="mt-7 flex flex-col gap-3">

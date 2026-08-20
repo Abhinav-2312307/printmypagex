@@ -25,6 +25,7 @@ export async function POST(req: Request) {
     const section = normalizeText(String(body?.section || ""))
     const phone = String(body?.phone || "").trim()
     const year = Number(body?.year)
+    const emailNotifications = body?.emailNotifications ?? true
 
     if (!firebaseUID) {
       return NextResponse.json(
@@ -91,7 +92,8 @@ export async function POST(req: Request) {
           branch,
           section,
           year,
-          phone
+          phone,
+          emailNotifications
         }
       },
       { returnDocument: "after" }

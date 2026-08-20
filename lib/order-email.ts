@@ -34,6 +34,7 @@ type UserRecord = {
   firebaseUID: string
   email?: string
   name?: string
+  emailNotifications?: boolean
 }
 
 type AdminUserMessageInput = {
@@ -147,7 +148,8 @@ async function getUserEmail(firebaseUID: string) {
   }
   return {
     email: normalizeEmail(user?.email),
-    name: user?.name || "User"
+    name: user?.name || "User",
+    emailNotifications: user?.emailNotifications ?? true
   }
 }
 
@@ -162,7 +164,8 @@ async function getSupplierProfiles(firebaseUIDs: string[]) {
     .map((u) => ({
       firebaseUID: String(u.firebaseUID),
       email: normalizeEmail(u.email),
-      name: u.name || "Supplier"
+      name: u.name || "Supplier",
+      emailNotifications: u.emailNotifications ?? true
     }))
     .filter((u) => u.email)
 }
@@ -176,7 +179,7 @@ export async function sendOrderCreatedNotifications(order: OrderEmailData) {
 
   const userProfile = await getUserEmail(String(order.userUID))
 
-  if (userProfile.email) {
+  if (userProfile.email && userProfile.emailNotifications !== false) {
     await sendEmail({
       to: userProfile.email,
       subject: `${appName}: Order Confirmed`,
@@ -193,7 +196,7 @@ export async function sendOrderCreatedNotifications(order: OrderEmailData) {
     if (!supplierProfile.email) {
       console.warn("ORDER_EMAIL_DEBUG: Specific supplier email missing", String(order.supplierUID))
     }
-    if (supplierProfile.email) {
+    if (supplierProfile.email && supplierProfile.emailNotifications !== false) {
       await sendEmail({
         to: supplierProfile.email,
         subject: `${appName}: New Order Assigned`,
@@ -212,16 +215,18 @@ export async function sendOrderCreatedNotifications(order: OrderEmailData) {
       firebaseUID: string
       email?: string
       name?: string
+      emailNotifications?: boolean
     }>({
       approved: true,
       active: true
-    }).lean<{ firebaseUID: string; email?: string; name?: string }[]>()
+    }).lean<{ firebaseUID: string; email?: string; name?: string; emailNotifications?: boolean }[]>()
 
     const suppliersWithDirectEmail = activeSuppliers
       .map((s) => ({
         firebaseUID: String(s.firebaseUID || ""),
         email: normalizeEmail(s.email),
-        name: s.name || "Supplier"
+        name: s.name || "Supplier",
+        emailNotifications: s.emailNotifications ?? true
       }))
       .filter((s) => s.firebaseUID && s.email)
 
@@ -234,13 +239,14 @@ export async function sendOrderCreatedNotifications(order: OrderEmailData) {
     )
 
     const profilesFromUsers = await getSupplierProfiles(uniqueSupplierUIDs)
-    const profileMap = new Map<string, { firebaseUID: string; email: string; name: string }>()
+    const profileMap = new Map<string, { firebaseUID: string; email: string; name: string; emailNotifications: boolean }>()
 
     suppliersWithDirectEmail.forEach((p) => {
       profileMap.set(p.firebaseUID, {
         firebaseUID: p.firebaseUID,
         email: p.email!,
-        name: p.name
+        name: p.name,
+        emailNotifications: p.emailNotifications
       })
     })
 
@@ -248,7 +254,8 @@ export async function sendOrderCreatedNotifications(order: OrderEmailData) {
       profileMap.set(String(p.firebaseUID), {
         firebaseUID: String(p.firebaseUID),
         email: p.email!,
-        name: p.name || "Supplier"
+        name: p.name || "Supplier",
+        emailNotifications: p.emailNotifications
       })
     })
 
@@ -259,17 +266,19 @@ export async function sendOrderCreatedNotifications(order: OrderEmailData) {
     })
 
     await Promise.allSettled(
-      profiles.map((profile) =>
-        sendEmail({
-          to: profile.email!,
-          subject: `${appName}: Global Launch Order - Accept Fast`,
-          html: `
-            <h2>Global launch order is live</h2>
-            <p>Hi ${profile.name}, a global order has been launched. Accept fast to claim it.</p>
-            ${orderSummaryHtml(order)}
-          `
-        })
-      )
+      profiles
+        .filter((profile) => profile.emailNotifications !== false)
+        .map((profile) =>
+          sendEmail({
+            to: profile.email!,
+            subject: `${appName}: Global Launch Order - Accept Fast`,
+            html: `
+              <h2>Global launch order is live</h2>
+              <p>Hi ${profile.name}, a global order has been launched. Accept fast to claim it.</p>
+              ${orderSummaryHtml(order)}
+            `
+          })
+        )
     )
   }
 }
@@ -282,6 +291,9 @@ export async function sendOrderAcceptedNotification(order: OrderEmailData) {
   const userProfile = await getUserEmail(String(order.userUID))
   if (!userProfile.email) {
     console.warn("ORDER_EMAIL_DEBUG: Accepted notification skipped, user email missing")
+    return
+  }
+  if (userProfile.emailNotifications === false) {
     return
   }
 
@@ -307,6 +319,9 @@ export async function sendAwaitingPaymentNotification(order: OrderEmailData) {
     console.warn("ORDER_EMAIL_DEBUG: Awaiting-payment notification skipped, user email missing")
     return
   }
+  if (userProfile.emailNotifications === false) {
+    return
+  }
 
   await sendEmail({
     to: userProfile.email,
@@ -330,6 +345,9 @@ export async function sendOrderStatusNotification(order: OrderEmailData, status:
     console.warn("ORDER_EMAIL_DEBUG: Status notification skipped, user email missing")
     return
   }
+  if (userProfile.emailNotifications === false) {
+    return
+  }
 
   await sendEmail({
     to: userProfile.email,
@@ -351,7 +369,7 @@ export async function sendOrderCancelledNotification(
     cancelledBy
   })
   const userProfile = await getUserEmail(String(order.userUID))
-  if (userProfile.email) {
+  if (userProfile.email && userProfile.emailNotifications !== false) {
     await sendEmail({
       to: userProfile.email,
       subject: `${appName}: Order Cancelled`,
@@ -365,7 +383,7 @@ export async function sendOrderCancelledNotification(
 
   if (order.supplierUID) {
     const supplierProfile = await getUserEmail(String(order.supplierUID))
-    if (supplierProfile.email) {
+    if (supplierProfile.email && supplierProfile.emailNotifications !== false) {
       await sendEmail({
         to: supplierProfile.email,
         subject: `${appName}: Order Cancelled`,
@@ -384,7 +402,7 @@ export async function sendPaymentReceivedNotifications(order: OrderEmailData) {
     orderId: String(order._id)
   })
   const userProfile = await getUserEmail(String(order.userUID))
-  if (userProfile.email) {
+  if (userProfile.email && userProfile.emailNotifications !== false) {
     await sendEmail({
       to: userProfile.email,
       subject: `${appName}: Payment Received`,
@@ -398,7 +416,7 @@ export async function sendPaymentReceivedNotifications(order: OrderEmailData) {
 
   if (order.supplierUID) {
     const supplierProfile = await getUserEmail(String(order.supplierUID))
-    if (supplierProfile.email) {
+    if (supplierProfile.email && supplierProfile.emailNotifications !== false) {
       await sendEmail({
         to: supplierProfile.email,
         subject: `${appName}: User Payment Received`,

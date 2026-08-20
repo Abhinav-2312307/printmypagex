@@ -116,6 +116,7 @@ type AdminUser = {
   role: UserRole
   approved?: boolean
   active?: boolean
+  emailNotifications?: boolean
   orderCount?: number
   paidCount?: number
   totalSpent?: number
@@ -3936,6 +3937,16 @@ export default function AdminPortalPage() {
                       busy={isBusyAction(`activate-${selectedUser.firebaseUID}`, `deactivate-${selectedUser.firebaseUID}`)}
                       onChange={(nextChecked) =>
                         runUserAction(selectedUser.firebaseUID!, nextChecked ? "deactivate" : "activate")
+                      }
+                    />
+                    <StatusToggle
+                      title="Notifications"
+                      checked={selectedUser.emailNotifications !== false}
+                      checkedLabel="Enabled"
+                      uncheckedLabel="Disabled"
+                      busy={isBusyAction(`enable_email_notifications-${selectedUser.firebaseUID}`, `disable_email_notifications-${selectedUser.firebaseUID}`)}
+                      onChange={(nextChecked) =>
+                        runUserAction(selectedUser.firebaseUID!, nextChecked ? "enable_email_notifications" : "disable_email_notifications")
                       }
                     />
                   </>

@@ -56,6 +56,11 @@ const UserSchema = new mongoose.Schema({
     default:true
   },
 
+  emailNotifications:{
+    type:Boolean,
+    default:true
+  },
+
   createdAt:{
     type:Date,
     default:Date.now
