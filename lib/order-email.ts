@@ -14,6 +14,7 @@ type OrderEmailData = {
   _id: string
   userUID: string
   supplierUID?: string | null
+  shortId?: string | null
   requestType?: "global" | "specific" | string
   printType?: string
   pages?: number
@@ -23,6 +24,9 @@ type OrderEmailData = {
   estimatedPrice?: number | null
   finalPrice?: number | null
   spiralBinding?: boolean | null
+  razorpayPaymentId?: string | null
+  razorpayRefundId?: string | null
+  refundRRN?: string | null
   files?: Array<{
     fileOriginalName?: string
     pages?: number
@@ -284,77 +288,70 @@ export async function sendOrderCreatedNotifications(order: OrderEmailData) {
 }
 
 export async function sendOrderAcceptedNotification(order: OrderEmailData) {
-  console.log("ORDER_EMAIL_DEBUG: Event=order_accepted", {
-    orderId: String(order._id),
-    userUID: order.userUID
-  })
-  const userProfile = await getUserEmail(String(order.userUID))
-  if (!userProfile.email) {
-    console.warn("ORDER_EMAIL_DEBUG: Accepted notification skipped, user email missing")
-    return
-  }
-  if (userProfile.emailNotifications === false) {
-    return
-  }
-
-  await sendEmail({
-    to: userProfile.email,
-    subject: `${appName}: Your Order Was Accepted`,
-    html: `
-      <h2>Your order has been accepted</h2>
-      <p>Hi ${userProfile.name}, a supplier accepted your order.</p>
-      <p>Please make payment as soon as your payable amount is shown in your orders page.</p>
-      ${orderSummaryHtml(order)}
-    `
-  })
+  // Merged into sendAwaitingPaymentNotification to prevent sending duplicate emails to the user
+  return sendAwaitingPaymentNotification(order)
 }
 
 export async function sendAwaitingPaymentNotification(order: OrderEmailData) {
-  console.log("ORDER_EMAIL_DEBUG: Event=awaiting_payment", {
+  console.log("ORDER_EMAIL_DEBUG: Event=order_accepted_and_awaiting_payment", {
     orderId: String(order._id),
     userUID: order.userUID
   })
   const userProfile = await getUserEmail(String(order.userUID))
-  if (!userProfile.email) {
-    console.warn("ORDER_EMAIL_DEBUG: Awaiting-payment notification skipped, user email missing")
-    return
-  }
-  if (userProfile.emailNotifications === false) {
+  if (!userProfile.email || userProfile.emailNotifications === false) {
     return
   }
 
+  const orderRef = order.shortId || String(order._id).slice(-8)
+  const payableStr = formatMoney(order.finalPrice ?? order.estimatedPrice)
+
   await sendEmail({
     to: userProfile.email,
-    subject: `${appName}: Payment Required For Your Order`,
+    subject: `${appName}: Order Accepted & Payment Required - Ref #${orderRef}`,
     html: `
-      <h2>Your order is ready for payment</h2>
-      <p>Hi ${userProfile.name}, your pages were verified and payment is now required.</p>
-      <p><strong>Amount payable:</strong> ${formatMoney(order.finalPrice ?? order.estimatedPrice)}</p>
+      <h2>Order Accepted & Payment Ready</h2>
+      <p>Hi ${escapeHtml(userProfile.name || "User")},</p>
+      <p>Great news! Your order (Ref: <strong>#${orderRef}</strong>) has been accepted by the supplier and verified.</p>
+      <p><strong>Amount Payable:</strong> <span style="font-size: 18px; font-weight: bold; color: #16a34a;">${payableStr}</span></p>
+      <p>Please log in to your account and click <strong>Pay Now</strong> so the supplier can start printing your document.</p>
       ${orderSummaryHtml(order)}
     `
   })
 }
 
 export async function sendOrderStatusNotification(order: OrderEmailData, status: string) {
+  // Skip duplicate email for 'printing' because sendPaymentReceivedNotifications already notifies user that payment succeeded and printing started
+  if (status === "printing" || status === "awaiting_payment" || status === "accepted") {
+    return
+  }
+
   console.log("ORDER_EMAIL_DEBUG: Event=status_update", {
     orderId: String(order._id),
     status
   })
   const userProfile = await getUserEmail(String(order.userUID))
-  if (!userProfile.email) {
-    console.warn("ORDER_EMAIL_DEBUG: Status notification skipped, user email missing")
+  if (!userProfile.email || userProfile.emailNotifications === false) {
     return
   }
-  if (userProfile.emailNotifications === false) {
-    return
+
+  const orderRef = order.shortId || String(order._id).slice(-8)
+  let statusTitle = `Order Status Updated To ${status.toUpperCase()}`
+  let statusMsg = `Your order status is now <strong>${status.toUpperCase()}</strong>.`
+
+  if (status === "printed") {
+    statusTitle = "Your Order Has Been Printed!"
+    statusMsg = `Your document printing is complete and ready for pickup / delivery.`
+  } else if (status === "delivered") {
+    statusTitle = "Your Order Has Been Delivered!"
+    statusMsg = `Your order has been marked as delivered. Thank you for using ${appName}!`
   }
 
   await sendEmail({
     to: userProfile.email,
-    subject: `${appName}: Order Status Updated To ${status.toUpperCase()}`,
+    subject: `${appName}: ${statusTitle} - Ref #${orderRef}`,
     html: `
-      <h2>Order status updated</h2>
-      <p>Hi ${userProfile.name}, your order status is now <strong>${status.toUpperCase()}</strong>.</p>
+      <h2>${statusTitle}</h2>
+      <p>Hi ${escapeHtml(userProfile.name || "User")}, ${statusMsg}</p>
       ${orderSummaryHtml(order)}
     `
   })
@@ -368,14 +365,15 @@ export async function sendOrderCancelledNotification(
     orderId: String(order._id),
     cancelledBy
   })
+  const orderRef = order.shortId || String(order._id).slice(-8)
   const userProfile = await getUserEmail(String(order.userUID))
   if (userProfile.email && userProfile.emailNotifications !== false) {
     await sendEmail({
       to: userProfile.email,
-      subject: `${appName}: Order Cancelled`,
+      subject: `${appName}: Order Cancelled - Ref #${orderRef}`,
       html: `
         <h2>Your order has been cancelled</h2>
-        <p>Cancellation source: ${cancelledBy.toUpperCase()}</p>
+        <p>Hi ${escapeHtml(userProfile.name || "User")}, order <strong>#${orderRef}</strong> was cancelled by ${cancelledBy.toUpperCase()}.</p>
         ${orderSummaryHtml(order)}
       `
     })
@@ -386,10 +384,10 @@ export async function sendOrderCancelledNotification(
     if (supplierProfile.email && supplierProfile.emailNotifications !== false) {
       await sendEmail({
         to: supplierProfile.email,
-        subject: `${appName}: Order Cancelled`,
+        subject: `${appName}: Order Cancelled - Ref #${orderRef}`,
         html: `
-          <h2>An assigned order has been cancelled</h2>
-          <p>Cancellation source: ${cancelledBy.toUpperCase()}</p>
+          <h2>Order Cancelled Notice</h2>
+          <p>Hi ${escapeHtml(supplierProfile.name || "Supplier")}, order <strong>#${orderRef}</strong> was cancelled by ${cancelledBy.toUpperCase()}.</p>
           ${orderSummaryHtml(order)}
         `
       })
@@ -401,14 +399,20 @@ export async function sendPaymentReceivedNotifications(order: OrderEmailData) {
   console.log("ORDER_EMAIL_DEBUG: Event=payment_received", {
     orderId: String(order._id)
   })
+  const orderRef = order.shortId || String(order._id).slice(-8)
   const userProfile = await getUserEmail(String(order.userUID))
   if (userProfile.email && userProfile.emailNotifications !== false) {
+    const amountStr = formatMoney(order.finalPrice ?? order.estimatedPrice)
+    const paymentId = order.razorpayPaymentId || "N/A"
+
     await sendEmail({
       to: userProfile.email,
-      subject: `${appName}: Payment Received`,
+      subject: `${appName}: Payment Confirmed & Printing Started - Ref #${orderRef}`,
       html: `
-        <h2>Payment successful</h2>
-        <p>Hi ${userProfile.name}, we received your payment.</p>
+        <h2>Payment Successful - Printing Started!</h2>
+        <p>Hi ${escapeHtml(userProfile.name || "User")},</p>
+        <p>We received your payment of <strong>${amountStr}</strong> (Payment ID: <code style="font-family: monospace;">${escapeHtml(paymentId)}</code>).</p>
+        <p>Your order (Ref: <strong>#${orderRef}</strong>) has automatically moved to <strong>PRINTING</strong> status. Your supplier is now printing your document!</p>
         ${orderSummaryHtml(order)}
       `
     })
@@ -419,10 +423,10 @@ export async function sendPaymentReceivedNotifications(order: OrderEmailData) {
     if (supplierProfile.email && supplierProfile.emailNotifications !== false) {
       await sendEmail({
         to: supplierProfile.email,
-        subject: `${appName}: User Payment Received`,
+        subject: `${appName}: Payment Confirmed for Order - Ref #${orderRef}`,
         html: `
-          <h2>Payment received for your order</h2>
-          <p>Hi ${supplierProfile.name}, user payment is confirmed. You can proceed with printing.</p>
+          <h2>User Payment Confirmed</h2>
+          <p>Hi ${escapeHtml(supplierProfile.name || "Supplier")}, payment for order <strong>#${orderRef}</strong> has been received. Please proceed with printing!</p>
           ${orderSummaryHtml(order)}
         `
       })
@@ -499,13 +503,45 @@ export async function sendOrderRefundNotification(order: OrderEmailData, refundA
   const userProfile = await getUserEmail(String(order.userUID))
   if (userProfile.email && userProfile.emailNotifications !== false) {
     const amountStr = formatMoney(refundAmount ?? order.finalPrice ?? order.estimatedPrice)
+    const refundId = order.razorpayRefundId || "Processing"
+    const paymentId = order.razorpayPaymentId || "N/A"
+    const rrn = order.refundRRN || null
+    const orderRef = order.shortId || String(order._id).slice(-8)
+
     await sendEmail({
       to: userProfile.email,
-      subject: `${appName}: Refund Initiated For Your Order`,
+      subject: `${appName}: Refund Initiated - Ref #${orderRef}`,
       html: `
         <h2>Refund Initiated</h2>
         <p>Hi ${escapeHtml(userProfile.name || "User")},</p>
-        <p>A refund of <strong>${amountStr}</strong> has been initiated for your order. The amount will be credited back to your original payment method within a few business days.</p>
+        <p>A full refund of <strong>${amountStr}</strong> has been initiated for your order (Ref: <strong>#${orderRef}</strong>).</p>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; p-4; padding: 16px; margin: 16px 0;">
+          <h3 style="margin-top: 0; color: #1e293b; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em;">Bank & Payment Reference Details</h3>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tr>
+              <td style="padding: 4px 0; color: #64748b;">Razorpay Refund ID:</td>
+              <td style="padding: 4px 0; font-weight: 600; font-family: monospace; color: #0f172a;">${escapeHtml(refundId)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #64748b;">Original Payment ID:</td>
+              <td style="padding: 4px 0; font-weight: 600; font-family: monospace; color: #0f172a;">${escapeHtml(paymentId)}</td>
+            </tr>
+            ${rrn ? `
+            <tr>
+              <td style="padding: 4px 0; color: #64748b;">Bank UTR / RRN:</td>
+              <td style="padding: 4px 0; font-weight: 600; font-family: monospace; color: #0f172a;">${escapeHtml(rrn)}</td>
+            </tr>
+            ` : ""}
+          </table>
+        </div>
+
+        <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px; margin-bottom: 16px; border-radius: 4px; font-size: 13px; color: #1e40af;">
+          <strong>How to trace with your bank if needed:</strong><br />
+          Most refunds reflect in your bank account / card within <strong>5 to 7 business days</strong>.<br />
+          If the refund does not reflect after 7 business days, you can contact your bank's customer support and provide the <strong>Razorpay Refund ID (${escapeHtml(refundId)})</strong> or <strong>Payment ID (${escapeHtml(paymentId)})</strong>. Your bank will use this official reference number to locate and expedite your refund.
+        </div>
+
         ${orderSummaryHtml(order)}
       `
     })

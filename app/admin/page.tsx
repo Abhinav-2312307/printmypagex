@@ -173,6 +173,8 @@ type AdminOrder = {
   paymentStatus: "unpaid" | "paid" | "refunded" | string
   razorpayOrderId?: string | null
   razorpayPaymentId?: string | null
+  razorpayRefundId?: string | null
+  refundRRN?: string | null
   paidAt?: string | null
   adminReminderCount?: number
   lastAdminReminderAt?: string | null
@@ -4572,6 +4574,30 @@ export default function AdminPortalPage() {
                 >
                   {busyAction === `order-refund-${selectedOrder._id}` ? "Refunding..." : "Issue Full Refund"}
                 </button>
+              </div>
+            ) : null}
+
+            {selectedOrder.paymentStatus === "refunded" ? (
+              <div className="mt-5 space-y-2 rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 text-xs">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-blue-600 dark:text-blue-400">Refunded via Razorpay</p>
+                  <span className="rounded bg-blue-500/20 px-2 py-0.5 text-[10px] text-blue-500 font-medium">Refunded</span>
+                </div>
+                {selectedOrder.razorpayRefundId && (
+                  <p className="text-gray-600 dark:text-gray-300">
+                    <span className="text-gray-400">Refund ID:</span> <span className="font-mono font-medium">{selectedOrder.razorpayRefundId}</span>
+                  </p>
+                )}
+                {selectedOrder.razorpayPaymentId && (
+                  <p className="text-gray-600 dark:text-gray-300">
+                    <span className="text-gray-400">Payment ID:</span> <span className="font-mono font-medium">{selectedOrder.razorpayPaymentId}</span>
+                  </p>
+                )}
+                {selectedOrder.refundRRN && (
+                  <p className="text-gray-600 dark:text-gray-300">
+                    <span className="text-gray-400">Bank UTR/RRN:</span> <span className="font-mono font-medium">{selectedOrder.refundRRN}</span>
+                  </p>
+                )}
               </div>
             ) : null}
 

@@ -59,6 +59,10 @@ pdfPassword?: string
 createdAt: string
 acceptedAt?: string | null
 paidAt?: string | null
+refundedAt?: string | null
+razorpayPaymentId?: string | null
+razorpayRefundId?: string | null
+refundRRN?: string | null
 deliveredAt?: string | null
 supplierName?: string | null
 supplierIsOwner?: boolean
@@ -872,6 +876,75 @@ ${active
 </div>
 
 
+
+{selectedOrder.paymentStatus === "refunded" && (
+  <div className="mt-6 rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 text-sm space-y-3">
+    <div className="flex items-center justify-between">
+      <span className="font-semibold text-blue-400">Refund & Bank Reference Details</span>
+      <span className="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">Refund Initiated</span>
+    </div>
+
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+      {selectedOrder.razorpayRefundId && (
+        <div className="bg-black/30 p-2.5 rounded-xl border border-white/10 flex items-center justify-between">
+          <div>
+            <p className="text-gray-400">Razorpay Refund ID</p>
+            <p className="font-mono text-white mt-0.5">{selectedOrder.razorpayRefundId}</p>
+          </div>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(selectedOrder.razorpayRefundId!)
+              toast.success("Refund ID copied!")
+            }}
+            className="text-xs bg-white/10 hover:bg-white/20 px-2 py-1 rounded text-gray-300"
+          >
+            Copy
+          </button>
+        </div>
+      )}
+
+      {selectedOrder.razorpayPaymentId && (
+        <div className="bg-black/30 p-2.5 rounded-xl border border-white/10 flex items-center justify-between">
+          <div>
+            <p className="text-gray-400">Original Payment ID</p>
+            <p className="font-mono text-white mt-0.5">{selectedOrder.razorpayPaymentId}</p>
+          </div>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(selectedOrder.razorpayPaymentId!)
+              toast.success("Payment ID copied!")
+            }}
+            className="text-xs bg-white/10 hover:bg-white/20 px-2 py-1 rounded text-gray-300"
+          >
+            Copy
+          </button>
+        </div>
+      )}
+
+      {selectedOrder.refundRRN && (
+        <div className="bg-black/30 p-2.5 rounded-xl border border-white/10 flex items-center justify-between sm:col-span-2">
+          <div>
+            <p className="text-gray-400">Bank UTR / RRN Reference</p>
+            <p className="font-mono text-white mt-0.5">{selectedOrder.refundRRN}</p>
+          </div>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(selectedOrder.refundRRN!)
+              toast.success("UTR/RRN copied!")
+            }}
+            className="text-xs bg-white/10 hover:bg-white/20 px-2 py-1 rounded text-gray-300"
+          >
+            Copy
+          </button>
+        </div>
+      )}
+    </div>
+
+    <p className="text-xs text-blue-300/80 leading-relaxed pt-1">
+      💡 <strong>How to complain/trace with your bank:</strong> Most refunds reflect within 5-7 business days. If delayed beyond 7 business days, contact your bank support and provide the <strong>Razorpay Refund ID ({selectedOrder.razorpayRefundId || "listed above"})</strong> or <strong>Payment ID ({selectedOrder.razorpayPaymentId || "listed above"})</strong> to trace your credit.
+    </p>
+  </div>
+)}
 
 <div className="mt-8 flex flex-wrap gap-3 md:mt-10 md:gap-4">
 
