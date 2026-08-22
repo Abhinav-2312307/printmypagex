@@ -852,9 +852,9 @@ Order Timeline
 {title:"Awaiting Payment",done:["awaiting_payment","printing","printed","delivered"].includes(selectedOrder.status)},
 {title:"Paid",done:selectedOrder.paymentStatus==="paid" || selectedOrder.paymentStatus==="refunded"},
 ...(selectedOrder.paymentStatus === "refunded" ? [{title:"Refunded",done:true}] : []),
-{title:"Printing",done:["printing","printed","delivered"].includes(selectedOrder.status)},
-{title:"Printed",done:["printed","delivered"].includes(selectedOrder.status)},
-{title:"Delivered",done:selectedOrder.status==="delivered"}
+{title:"Printing",done:["printing","printed","delivered"].includes(selectedOrder.status) && selectedOrder.paymentStatus !== "refunded" && selectedOrder.status !== "cancelled"},
+{title:"Printed",done:["printed","delivered"].includes(selectedOrder.status) && selectedOrder.paymentStatus !== "refunded" && selectedOrder.status !== "cancelled"},
+{title:"Delivered",done:selectedOrder.status==="delivered" && selectedOrder.paymentStatus !== "refunded" && selectedOrder.status !== "cancelled"}
 ].map((step,i)=>{
 
 const active = step.done

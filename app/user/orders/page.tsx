@@ -802,19 +802,19 @@ done:true
 {
 title:"Printing",
 time:selectedOrder.paidAt || null,
-done:["printing","printed","delivered"].includes(selectedOrder.status)
+done:["printing","printed","delivered"].includes(selectedOrder.status) && selectedOrder.paymentStatus !== "refunded" && selectedOrder.status !== "cancelled"
 },
 
 {
 title:"Printed",
 time:null,
-done:["printed","delivered"].includes(selectedOrder.status)
+done:["printed","delivered"].includes(selectedOrder.status) && selectedOrder.paymentStatus !== "refunded" && selectedOrder.status !== "cancelled"
 },
 
 {
 title:"Delivered",
 time:selectedOrder.deliveredAt || null,
-done:selectedOrder.status==="delivered"
+done:selectedOrder.status==="delivered" && selectedOrder.paymentStatus !== "refunded" && selectedOrder.status !== "cancelled"
 }
 
 ].map((step,i)=>{

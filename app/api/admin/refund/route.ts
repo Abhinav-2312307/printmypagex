@@ -75,6 +75,8 @@ export async function POST(req: Request) {
 
     const now = new Date()
     dbOrder.paymentStatus = "refunded"
+    dbOrder.status = "cancelled"
+    dbOrder.cancelledAt = now
     dbOrder.logs.push({
       message: `Admin initiated full refund of INR ${payableAmount.toFixed(2)} (${auth.email})`,
       time: now
