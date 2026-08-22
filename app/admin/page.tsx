@@ -170,7 +170,7 @@ type AdminOrder = {
   finalPrice?: number | null
   discountPercent?: number
   discountAmount?: number
-  paymentStatus: "unpaid" | "paid" | string
+  paymentStatus: "unpaid" | "paid" | "refunded" | string
   razorpayOrderId?: string | null
   razorpayPaymentId?: string | null
   paidAt?: string | null
@@ -348,7 +348,7 @@ function getStatusBadge(status: string) {
     return "bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30"
   }
 
-  if (["rejected", "cancelled", "disapproved", "inactive"].includes(normalized)) {
+  if (["rejected", "cancelled", "disapproved", "inactive", "refunded"].includes(normalized)) {
     return "bg-rose-500/15 text-rose-600 dark:text-rose-300 border border-rose-500/30"
   }
 
@@ -480,7 +480,7 @@ export default function AdminPortalPage() {
   const [orderAssignmentFilter, setOrderAssignmentFilter] = useState<"ALL" | "assigned" | "unassigned">("ALL")
 
   const [paymentQuery, setPaymentQuery] = useState("")
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState<"ALL" | "paid" | "unpaid">("ALL")
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<"ALL" | "paid" | "unpaid" | "refunded">("ALL")
 
   const [payoutQuery, setPayoutQuery] = useState("")
   const [payoutStatusFilter, setPayoutStatusFilter] = useState<"ALL" | "pending" | "approved" | "rejected">("ALL")
@@ -513,6 +513,25 @@ export default function AdminPortalPage() {
   const [ordersWorkspace, setOrdersWorkspace] = useState<OrdersWorkspace | null>(null)
   const [workspaceFilter, setWorkspaceFilter] = useState<WorkspaceFilter>("all")
   const [workspaceOrderDetail, setWorkspaceOrderDetail] = useState<AdminOrder | null>(null)
+
+  const isAnyOverlayOpen = Boolean(
+    selectedUser ||
+      selectedSupplier ||
+      selectedOrder ||
+      rawEditorOpen ||
+      showControlHub ||
+      ordersWorkspace ||
+      workspaceOrderDetail
+  )
+
+  useEffect(() => {
+    if (isAnyOverlayOpen) {
+      document.body.style.overflow = "hidden"
+      return () => {
+        document.body.style.overflow = ""
+      }
+    }
+  }, [isAnyOverlayOpen])
 
   const isBusyAction = useCallback((...keys: string[]) => keys.includes(busyAction), [busyAction])
 
@@ -1206,6 +1225,55 @@ export default function AdminPortalPage() {
       )
       setOrderReminderNote("")
       setMessage(response.message || "Payment reminder email sent successfully")
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError))
+    } finally {
+      setBusyAction("")
+    }
+  }
+
+  const runRefundPayment = async () => {
+    if (!selectedOrder) return
+
+    if (selectedOrder.paymentStatus !== "paid") {
+      setError("Only paid orders can be refunded")
+      return
+    }
+
+    if (!selectedOrder.razorpayPaymentId) {
+      setError("This order does not have an associated Razorpay payment ID")
+      return
+    }
+
+    if (!window.confirm("Are you sure you want to issue a full refund? This cannot be undone.")) {
+      return
+    }
+
+    try {
+      setBusyAction(`order-refund-${selectedOrder._id}`)
+      setError("")
+
+      const response = await adminFetch<{ success: boolean; message?: string; order: AdminOrder }>(
+        "/api/admin/refund",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            orderId: selectedOrder._id
+          })
+        }
+      )
+
+      const updatedOrder = response.order
+
+      setOrders((prev) =>
+        prev.map((item) => (item._id === updatedOrder._id ? updatedOrder : item))
+      )
+      setSelectedOrder(updatedOrder)
+      setWorkspaceOrderDetail((prev) =>
+        prev && prev._id === updatedOrder._id ? updatedOrder : prev
+      )
+
+      setMessage(response.message || "Refund processed successfully")
     } catch (caughtError) {
       setError(getErrorMessage(caughtError))
     } finally {
@@ -2686,23 +2754,35 @@ export default function AdminPortalPage() {
 
           {activeTab === "payments" ? (
             <div className="space-y-4">
-              <div className="grid lg:grid-cols-4 gap-3">
+              <div className="grid lg:grid-cols-6 gap-3">
                 <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Total Payment Events</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Total Events</p>
                   <p className="text-2xl font-semibold mt-1">{payments.length}</p>
                 </div>
                 <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Paid</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Paid Orders</p>
                   <p className="text-2xl font-semibold mt-1">{payments.filter((item) => item.paymentStatus === "paid").length}</p>
                 </div>
                 <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Unpaid</p>
-                  <p className="text-2xl font-semibold mt-1">{payments.filter((item) => item.paymentStatus !== "paid").length}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Refunded</p>
+                  <p className="text-2xl font-semibold mt-1 text-red-500">{payments.filter((item) => item.paymentStatus === "refunded").length}</p>
                 </div>
                 <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Total Amount (Rows)</p>
-                  <p className="text-2xl font-semibold mt-1">
-                    {formatCurrency(payments.reduce((sum, item) => sum + Number(item.amount || 0), 0))}
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Gross Received</p>
+                  <p className="text-xl font-semibold mt-1">
+                    {formatCurrency(payments.filter((item) => item.paymentStatus === "paid" || item.paymentStatus === "refunded").reduce((sum, item) => sum + Number(item.amount || 0), 0))}
+                  </p>
+                </div>
+                <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Total Refunded</p>
+                  <p className="text-xl font-semibold mt-1 text-red-500">
+                    {formatCurrency(payments.filter((item) => item.paymentStatus === "refunded").reduce((sum, item) => sum + Number(item.amount || 0), 0))}
+                  </p>
+                </div>
+                <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Net Retained</p>
+                  <p className="text-xl font-semibold mt-1 text-emerald-500">
+                    {formatCurrency(payments.filter((item) => item.paymentStatus === "paid").reduce((sum, item) => sum + Number(item.amount || 0), 0))}
                   </p>
                 </div>
               </div>
@@ -2721,13 +2801,14 @@ export default function AdminPortalPage() {
                 <select
                   value={paymentStatusFilter}
                   onChange={(event) =>
-                    setPaymentStatusFilter(event.target.value as "ALL" | "paid" | "unpaid")
+                    setPaymentStatusFilter(event.target.value as "ALL" | "paid" | "unpaid" | "refunded")
                   }
                   className="px-3 py-2.5 rounded-xl bg-white/80 dark:bg-black/30 border border-gray-200 dark:border-white/20"
                 >
                   <option value="ALL">All Status</option>
                   <option value="paid">Paid</option>
                   <option value="unpaid">Unpaid</option>
+                  <option value="refunded">Refunded</option>
                 </select>
 
                 <button
@@ -4471,6 +4552,28 @@ export default function AdminPortalPage() {
                 {busyAction === `order-reminder-${selectedOrder._id}` ? "Sending..." : "Send Reminder Mail"}
               </button>
             </div>
+
+            {selectedOrder.paymentStatus === "paid" && selectedOrder.razorpayPaymentId ? (
+              <div className="mt-5 space-y-3 rounded-2xl border border-red-500/20 bg-red-500/5 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-red-600 dark:text-red-400">Refund Payment</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Issue a full refund to the user's original payment method via Razorpay.
+                      This action cannot be undone.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={runRefundPayment}
+                  disabled={busyAction === `order-refund-${selectedOrder._id}`}
+                  className="w-full rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-500/20 disabled:opacity-60 dark:text-red-400"
+                >
+                  {busyAction === `order-refund-${selectedOrder._id}` ? "Refunding..." : "Issue Full Refund"}
+                </button>
+              </div>
+            ) : null}
 
             <div className="mt-5 space-y-3 text-sm">
               <div>

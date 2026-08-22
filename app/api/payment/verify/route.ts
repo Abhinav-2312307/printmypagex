@@ -93,6 +93,16 @@ export async function POST(req: Request) {
       })
     }
 
+    if (order.paymentStatus === "refunded") {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Order has been refunded and payment cannot be verified"
+        },
+        { status: 409 }
+      )
+    }
+
     if (order.status === "cancelled") {
       return NextResponse.json(
         {

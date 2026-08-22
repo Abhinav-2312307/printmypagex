@@ -489,3 +489,26 @@ export async function sendAdminPaymentReminderNotification(
     `
   })
 }
+
+export async function sendOrderRefundNotification(order: OrderEmailData, refundAmount?: number) {
+  console.log("ORDER_EMAIL_DEBUG: Event=order_refund", {
+    orderId: String(order._id),
+    userUID: order.userUID
+  })
+
+  const userProfile = await getUserEmail(String(order.userUID))
+  if (userProfile.email && userProfile.emailNotifications !== false) {
+    const amountStr = formatMoney(refundAmount ?? order.finalPrice ?? order.estimatedPrice)
+    await sendEmail({
+      to: userProfile.email,
+      subject: `${appName}: Refund Initiated For Your Order`,
+      html: `
+        <h2>Refund Initiated</h2>
+        <p>Hi ${escapeHtml(userProfile.name || "User")},</p>
+        <p>A refund of <strong>${amountStr}</strong> has been initiated for your order. The amount will be credited back to your original payment method within a few business days.</p>
+        ${orderSummaryHtml(order)}
+      `
+    })
+  }
+}
+

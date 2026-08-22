@@ -19,8 +19,10 @@ export async function GET(req: Request) {
     activeSuppliers,
     totalOrders,
     paidOrders,
+    refundedOrders,
     pendingOrders,
     revenueAgg,
+    refundedAgg,
     orderStatusAgg,
     paymentTrendAgg,
     orderTrendAgg
@@ -32,6 +34,7 @@ export async function GET(req: Request) {
     Supplier.countDocuments({ active: true }),
     Order.countDocuments({}),
     Order.countDocuments({ paymentStatus: "paid" }),
+    Order.countDocuments({ paymentStatus: "refunded" }),
     Order.countDocuments({
       status: { $in: ["pending", "accepted", "awaiting_payment", "printing", "printed"] }
     }),
@@ -45,6 +48,27 @@ export async function GET(req: Request) {
         $group: {
           _id: null,
           totalRevenue: {
+            $sum: {
+              $cond: [
+                { $ifNull: ["$finalPrice", false] },
+                "$finalPrice",
+                "$estimatedPrice"
+              ]
+            }
+          }
+        }
+      }
+    ]),
+    Order.aggregate([
+      {
+        $match: {
+          paymentStatus: "refunded"
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalRefunded: {
             $sum: {
               $cond: [
                 { $ifNull: ["$finalPrice", false] },
@@ -135,6 +159,10 @@ export async function GET(req: Request) {
     count: item.count
   }))
 
+  const netRevenue = revenueAgg[0]?.totalRevenue || 0
+  const totalRefunded = refundedAgg[0]?.totalRefunded || 0
+  const grossRazorpayRevenue = netRevenue + totalRefunded
+
   return NextResponse.json({
     success: true,
     stats: {
@@ -145,8 +173,12 @@ export async function GET(req: Request) {
       activeSuppliers,
       totalOrders,
       paidOrders,
+      refundedOrders,
       pendingOrders,
-      totalRevenue: revenueAgg[0]?.totalRevenue || 0
+      grossRazorpayRevenue,
+      totalRefunded,
+      netRevenue,
+      totalRevenue: netRevenue
     },
     charts: {
       statusBreakdown,

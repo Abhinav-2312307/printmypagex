@@ -78,6 +78,16 @@ export async function POST(req: Request) {
       )
     }
 
+    if (dbOrder.paymentStatus === "refunded") {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Order has been refunded and cannot be paid again"
+        },
+        { status: 409 }
+      )
+    }
+
     if (dbOrder.status === "cancelled") {
       return NextResponse.json(
         {

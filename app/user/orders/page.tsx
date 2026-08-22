@@ -114,6 +114,15 @@ const [paying,setPaying] = useState(false)
 const [showSupplierPeek,setShowSupplierPeek] = useState(false)
 const [showSupplierCard,setShowSupplierCard] = useState(false)
 
+useEffect(() => {
+  if (selectedOrder || showSupplierCard) {
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = ""
+    }
+  }
+}, [selectedOrder, showSupplierCard])
+
 useEffect(()=>{
 
 const unsubscribe = onAuthStateChanged(auth,async(user)=>{
@@ -790,25 +799,31 @@ done:["awaiting_payment","printing","printed","delivered"].includes(selectedOrde
 {
 title:"Paid",
 time:selectedOrder.paidAt || null,
-done:selectedOrder.paymentStatus==="paid"
+done:selectedOrder.paymentStatus==="paid" || selectedOrder.paymentStatus==="refunded"
 },
+
+...(selectedOrder.paymentStatus === "refunded" ? [{
+title:"Refunded",
+time:selectedOrder.cancelledAt || selectedOrder.paidAt || null,
+done:true
+}] : []),
 
 {
 title:"Printing",
 time:selectedOrder.paidAt || null,
-done:["printing","printed","delivered"].includes(selectedOrder.status)
+done:["printing","printed","delivered"].includes(selectedOrder.status) && selectedOrder.paymentStatus !== "refunded" && selectedOrder.status !== "cancelled"
 },
 
 {
 title:"Printed",
 time:null,
-done:["printed","delivered"].includes(selectedOrder.status)
+done:["printed","delivered"].includes(selectedOrder.status) && selectedOrder.paymentStatus !== "refunded" && selectedOrder.status !== "cancelled"
 },
 
 {
 title:"Delivered",
 time:selectedOrder.deliveredAt || null,
-done:selectedOrder.status==="delivered"
+done:selectedOrder.status==="delivered" && selectedOrder.paymentStatus !== "refunded" && selectedOrder.status !== "cancelled"
 }
 
 ].map((step,i)=>{

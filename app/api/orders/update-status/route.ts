@@ -83,6 +83,16 @@ message:`Cannot move order from ${previousStatus} to ${status}`
 )
 }
 
+if(order.paymentStatus === "refunded" || order.status === "cancelled"){
+return NextResponse.json(
+{
+success:false,
+message:"Cannot update status of a refunded or cancelled order"
+},
+{ status:409 }
+)
+}
+
 if(status === "printing" && order.paymentStatus !== "paid"){
 return NextResponse.json(
 {
