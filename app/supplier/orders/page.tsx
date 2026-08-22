@@ -599,7 +599,7 @@ View Details →
 
 <div className="flex flex-wrap gap-3 sm:gap-4">
 
-{order.status==="pending" &&(
+{order.status==="pending" && order.paymentStatus !== "refunded" && order.status !== "cancelled" &&(
 
 <button
 onClick={()=>openAcceptModal(order)}
@@ -610,7 +610,7 @@ Verify & Accept
 
 )}
 
-{order.status==="awaiting_payment" && order.paymentStatus==="paid" &&(
+{order.status==="awaiting_payment" && order.paymentStatus==="paid" && order.status !== "cancelled" &&(
 <button
 onClick={()=>updateOrderStatus(order._id,"printing")}
 className="bg-indigo-500 px-6 py-2 rounded-xl font-semibold"
@@ -619,7 +619,7 @@ Start Printing
 </button>
 )}
 
-{order.status==="printing" &&(
+{order.status==="printing" && order.paymentStatus !== "refunded" && order.status !== "cancelled" &&(
 <button
 onClick={()=>updateOrderStatus(order._id,"printed")}
 className="bg-green-500 px-6 py-2 rounded-xl font-semibold"
@@ -628,7 +628,7 @@ Mark Printed
 </button>
 )}
 
-{order.status==="printed" &&(
+{order.status==="printed" && order.paymentStatus !== "refunded" && order.status !== "cancelled" &&(
 <button
 onClick={()=>updateOrderStatus(order._id,"delivered")}
 className="bg-purple-500 px-6 py-2 rounded-xl font-semibold"
@@ -914,8 +914,7 @@ Verify Pages & Accept
 </button>
 )}
 
-{["accepted","awaiting_payment"].includes(selectedOrder.status) &&
-selectedOrder.paymentStatus!=="paid" &&(
+{["accepted","awaiting_payment"].includes(selectedOrder.status) && selectedOrder.paymentStatus !== "refunded" && selectedOrder.status !== "cancelled" &&(
 <button
 onClick={()=>verifyPages(selectedOrder._id)}
 className="bg-green-500 px-6 py-2 rounded-xl font-semibold"
@@ -924,7 +923,7 @@ Update Verified Pages
 </button>
 )}
 
-{selectedOrder.status==="awaiting_payment" && selectedOrder.paymentStatus==="paid" &&(
+{selectedOrder.status==="awaiting_payment" && selectedOrder.paymentStatus==="paid" && selectedOrder.status !== "cancelled" &&(
 <button
 onClick={()=>updateOrderStatus(selectedOrder._id,"printing")}
 className="bg-indigo-500 px-6 py-2 rounded-xl font-semibold"
@@ -933,7 +932,7 @@ Start Printing
 </button>
 )}
 
-{selectedOrder.status==="printing" &&(
+{selectedOrder.status==="printing" && selectedOrder.paymentStatus !== "refunded" && selectedOrder.status !== "cancelled" &&(
 <button
 onClick={()=>updateOrderStatus(selectedOrder._id,"printed")}
 className="bg-green-500 px-6 py-2 rounded-xl font-semibold"
@@ -942,7 +941,7 @@ Mark Printed
 </button>
 )}
 
-{selectedOrder.status==="printed" &&(
+{selectedOrder.status==="printed" && selectedOrder.paymentStatus !== "refunded" && selectedOrder.status !== "cancelled" &&(
 <button
 onClick={()=>updateOrderStatus(selectedOrder._id,"delivered")}
 className="bg-purple-500 px-6 py-2 rounded-xl font-semibold"
