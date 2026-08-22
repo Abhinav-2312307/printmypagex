@@ -107,7 +107,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: "Cancelled order payment ignored" })
     }
 
-    if (order.paymentStatus !== "paid") {
+    if (order.paymentStatus !== "paid" && order.paymentStatus !== "refunded") {
       order.paymentStatus = "paid"
       order.razorpayPaymentId = payment.id
       order.paidAt = new Date()

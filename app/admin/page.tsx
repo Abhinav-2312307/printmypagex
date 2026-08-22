@@ -2754,23 +2754,35 @@ export default function AdminPortalPage() {
 
           {activeTab === "payments" ? (
             <div className="space-y-4">
-              <div className="grid lg:grid-cols-4 gap-3">
+              <div className="grid lg:grid-cols-6 gap-3">
                 <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Total Payment Events</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Total Events</p>
                   <p className="text-2xl font-semibold mt-1">{payments.length}</p>
                 </div>
                 <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Paid</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Paid Orders</p>
                   <p className="text-2xl font-semibold mt-1">{payments.filter((item) => item.paymentStatus === "paid").length}</p>
                 </div>
                 <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Unpaid</p>
-                  <p className="text-2xl font-semibold mt-1">{payments.filter((item) => item.paymentStatus !== "paid").length}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Refunded</p>
+                  <p className="text-2xl font-semibold mt-1 text-red-500">{payments.filter((item) => item.paymentStatus === "refunded").length}</p>
                 </div>
                 <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Total Amount (Rows)</p>
-                  <p className="text-2xl font-semibold mt-1">
-                    {formatCurrency(payments.reduce((sum, item) => sum + Number(item.amount || 0), 0))}
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Gross Received</p>
+                  <p className="text-xl font-semibold mt-1">
+                    {formatCurrency(payments.filter((item) => item.paymentStatus === "paid" || item.paymentStatus === "refunded").reduce((sum, item) => sum + Number(item.amount || 0), 0))}
+                  </p>
+                </div>
+                <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Total Refunded</p>
+                  <p className="text-xl font-semibold mt-1 text-red-500">
+                    {formatCurrency(payments.filter((item) => item.paymentStatus === "refunded").reduce((sum, item) => sum + Number(item.amount || 0), 0))}
+                  </p>
+                </div>
+                <div className="backdrop-blur-2xl bg-white/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-3xl p-4">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Net Retained</p>
+                  <p className="text-xl font-semibold mt-1 text-emerald-500">
+                    {formatCurrency(payments.filter((item) => item.paymentStatus === "paid").reduce((sum, item) => sum + Number(item.amount || 0), 0))}
                   </p>
                 </div>
               </div>
