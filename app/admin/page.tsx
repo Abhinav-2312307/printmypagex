@@ -510,9 +510,27 @@ export default function AdminPortalPage() {
   const [orderReminderNote, setOrderReminderNote] = useState("")
   const [showControlHub, setShowControlHub] = useState(false)
 
-  const [ordersWorkspace, setOrdersWorkspace] = useState<OrdersWorkspace | null>(null)
   const [workspaceFilter, setWorkspaceFilter] = useState<WorkspaceFilter>("all")
   const [workspaceOrderDetail, setWorkspaceOrderDetail] = useState<AdminOrder | null>(null)
+
+  const isAnyOverlayOpen = Boolean(
+    selectedUser ||
+      selectedSupplier ||
+      selectedOrder ||
+      rawEditorOpen ||
+      showControlHub ||
+      ordersWorkspace ||
+      workspaceOrderDetail
+  )
+
+  useEffect(() => {
+    if (isAnyOverlayOpen) {
+      document.body.style.overflow = "hidden"
+      return () => {
+        document.body.style.overflow = ""
+      }
+    }
+  }, [isAnyOverlayOpen])
 
   const isBusyAction = useCallback((...keys: string[]) => keys.includes(busyAction), [busyAction])
 

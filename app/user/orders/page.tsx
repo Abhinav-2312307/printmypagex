@@ -114,6 +114,15 @@ const [paying,setPaying] = useState(false)
 const [showSupplierPeek,setShowSupplierPeek] = useState(false)
 const [showSupplierCard,setShowSupplierCard] = useState(false)
 
+useEffect(() => {
+  if (selectedOrder || showSupplierCard) {
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = ""
+    }
+  }
+}, [selectedOrder, showSupplierCard])
+
 useEffect(()=>{
 
 const unsubscribe = onAuthStateChanged(auth,async(user)=>{

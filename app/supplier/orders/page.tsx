@@ -76,6 +76,15 @@ const [discountValue, setDiscountValue] = useState<string>("")
 const [applyingDiscount, setApplyingDiscount] = useState(false)
 const { pricing } = usePrintPricing()
 
+useEffect(() => {
+  if (selectedOrder) {
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = ""
+    }
+  }
+}, [selectedOrder])
+
 async function loadOrders(uid:string){
 
 try{

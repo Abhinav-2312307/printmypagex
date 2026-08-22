@@ -18,6 +18,13 @@ export function RawDatabaseEditor({ collection, documentId, onClose, onSuccess }
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = ""
+    }
+  }, [])
+
+  useEffect(() => {
     async function fetchDocument() {
       try {
         const res = await authFetch(`/api/admin/raw-editor?collection=${collection}&id=${documentId}`)
