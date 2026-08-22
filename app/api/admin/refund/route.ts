@@ -61,8 +61,9 @@ export async function POST(req: Request) {
 
     const payableAmount = Number(dbOrder.finalPrice ?? dbOrder.estimatedPrice ?? 0)
 
+    let refundResult: any
     try {
-      await razorpay.payments.refund(dbOrder.razorpayPaymentId, {
+      refundResult = await razorpay.payments.refund(dbOrder.razorpayPaymentId, {
         amount: Math.round(payableAmount * 100)
       })
     } catch (refundError: any) {
@@ -74,11 +75,18 @@ export async function POST(req: Request) {
     }
 
     const now = new Date()
+    const refundId = String(refundResult?.id || "")
+    const refundRRN = refundResult?.acquirer_data?.rrn || refundResult?.acquirer_data?.arn || null
+
     dbOrder.paymentStatus = "refunded"
     dbOrder.status = "cancelled"
     dbOrder.cancelledAt = now
+    dbOrder.refundedAt = now
+    if (refundId) dbOrder.razorpayRefundId = refundId
+    if (refundRRN) dbOrder.refundRRN = String(refundRRN)
+
     dbOrder.logs.push({
-      message: `Admin initiated full refund of INR ${payableAmount.toFixed(2)} (${auth.email})`,
+      message: `Admin initiated full refund of INR ${payableAmount.toFixed(2)} (${auth.email}${refundId ? `, Refund ID: ${refundId}` : ""}${refundRRN ? `, RRN: ${refundRRN}` : ""})`,
       time: now
     })
 

@@ -14,6 +14,7 @@ type OrderEmailData = {
   _id: string
   userUID: string
   supplierUID?: string | null
+  shortId?: string | null
   requestType?: "global" | "specific" | string
   printType?: string
   pages?: number
@@ -23,6 +24,9 @@ type OrderEmailData = {
   estimatedPrice?: number | null
   finalPrice?: number | null
   spiralBinding?: boolean | null
+  razorpayPaymentId?: string | null
+  razorpayRefundId?: string | null
+  refundRRN?: string | null
   files?: Array<{
     fileOriginalName?: string
     pages?: number
@@ -499,13 +503,45 @@ export async function sendOrderRefundNotification(order: OrderEmailData, refundA
   const userProfile = await getUserEmail(String(order.userUID))
   if (userProfile.email && userProfile.emailNotifications !== false) {
     const amountStr = formatMoney(refundAmount ?? order.finalPrice ?? order.estimatedPrice)
+    const refundId = order.razorpayRefundId || "Processing"
+    const paymentId = order.razorpayPaymentId || "N/A"
+    const rrn = order.refundRRN || null
+    const orderRef = order.shortId || String(order._id).slice(-8)
+
     await sendEmail({
       to: userProfile.email,
-      subject: `${appName}: Refund Initiated For Your Order`,
+      subject: `${appName}: Refund Initiated - Ref #${orderRef}`,
       html: `
         <h2>Refund Initiated</h2>
         <p>Hi ${escapeHtml(userProfile.name || "User")},</p>
-        <p>A refund of <strong>${amountStr}</strong> has been initiated for your order. The amount will be credited back to your original payment method within a few business days.</p>
+        <p>A full refund of <strong>${amountStr}</strong> has been initiated for your order (Ref: <strong>#${orderRef}</strong>).</p>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; p-4; padding: 16px; margin: 16px 0;">
+          <h3 style="margin-top: 0; color: #1e293b; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em;">Bank & Payment Reference Details</h3>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tr>
+              <td style="padding: 4px 0; color: #64748b;">Razorpay Refund ID:</td>
+              <td style="padding: 4px 0; font-weight: 600; font-family: monospace; color: #0f172a;">${escapeHtml(refundId)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #64748b;">Original Payment ID:</td>
+              <td style="padding: 4px 0; font-weight: 600; font-family: monospace; color: #0f172a;">${escapeHtml(paymentId)}</td>
+            </tr>
+            ${rrn ? `
+            <tr>
+              <td style="padding: 4px 0; color: #64748b;">Bank UTR / RRN:</td>
+              <td style="padding: 4px 0; font-weight: 600; font-family: monospace; color: #0f172a;">${escapeHtml(rrn)}</td>
+            </tr>
+            ` : ""}
+          </table>
+        </div>
+
+        <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px; margin-bottom: 16px; border-radius: 4px; font-size: 13px; color: #1e40af;">
+          <strong>How to trace with your bank if needed:</strong><br />
+          Most refunds reflect in your bank account / card within <strong>5 to 7 business days</strong>.<br />
+          If the refund does not reflect after 7 business days, you can contact your bank's customer support and provide the <strong>Razorpay Refund ID (${escapeHtml(refundId)})</strong> or <strong>Payment ID (${escapeHtml(paymentId)})</strong>. Your bank will use this official reference number to locate and expedite your refund.
+        </div>
+
         ${orderSummaryHtml(order)}
       `
     })
