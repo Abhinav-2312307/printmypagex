@@ -510,6 +510,7 @@ export default function AdminPortalPage() {
   const [orderReminderNote, setOrderReminderNote] = useState("")
   const [showControlHub, setShowControlHub] = useState(false)
 
+  const [ordersWorkspace, setOrdersWorkspace] = useState<OrdersWorkspace | null>(null)
   const [workspaceFilter, setWorkspaceFilter] = useState<WorkspaceFilter>("all")
   const [workspaceOrderDetail, setWorkspaceOrderDetail] = useState<AdminOrder | null>(null)
 
