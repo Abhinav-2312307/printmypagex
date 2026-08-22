@@ -4,6 +4,7 @@ import Order from "@/models/Order"
 import { applyOrderLifecycleRules } from "@/lib/order-lifecycle"
 import { pusherServer } from "@/lib/pusher-server"
 import { recordActivity } from "@/lib/activity-log"
+import { sendOrderRefundNotification } from "@/lib/order-email"
 import Razorpay from "razorpay"
 
 export async function POST(req: Request) {
@@ -96,6 +97,10 @@ export async function POST(req: Request) {
         supplierUID: String(dbOrder.supplierUID || ""),
         amount: payableAmount
       }
+    })
+
+    sendOrderRefundNotification(dbOrder, payableAmount).catch((emailError) => {
+      console.error("ORDER_REFUND_EMAIL_ERROR:", emailError)
     })
 
     try {

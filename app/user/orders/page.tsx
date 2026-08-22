@@ -790,8 +790,14 @@ done:["awaiting_payment","printing","printed","delivered"].includes(selectedOrde
 {
 title:"Paid",
 time:selectedOrder.paidAt || null,
-done:selectedOrder.paymentStatus==="paid"
+done:selectedOrder.paymentStatus==="paid" || selectedOrder.paymentStatus==="refunded"
 },
+
+...(selectedOrder.paymentStatus === "refunded" ? [{
+title:"Refunded",
+time:selectedOrder.cancelledAt || selectedOrder.paidAt || null,
+done:true
+}] : []),
 
 {
 title:"Printing",

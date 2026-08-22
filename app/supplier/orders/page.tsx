@@ -850,7 +850,8 @@ Order Timeline
 {title:"Order Placed",done:true},
 {title:"Accepted & Verified",done:selectedOrder.status!=="pending"},
 {title:"Awaiting Payment",done:["awaiting_payment","printing","printed","delivered"].includes(selectedOrder.status)},
-{title:"Paid",done:selectedOrder.paymentStatus==="paid"},
+{title:"Paid",done:selectedOrder.paymentStatus==="paid" || selectedOrder.paymentStatus==="refunded"},
+...(selectedOrder.paymentStatus === "refunded" ? [{title:"Refunded",done:true}] : []),
 {title:"Printing",done:["printing","printed","delivered"].includes(selectedOrder.status)},
 {title:"Printed",done:["printed","delivered"].includes(selectedOrder.status)},
 {title:"Delivered",done:selectedOrder.status==="delivered"}
