@@ -4629,11 +4629,13 @@ export default function AdminPortalPage() {
                 <p className="font-medium">{selectedOrder.spiralBinding ? "Requested" : "No"}</p>
               </div>
 
-              {selectedOrder.pdfPasswordRequired ? (
-                <div>
-                  <p className="text-gray-500 dark:text-gray-400">PDF Password</p>
-                  <p className="font-medium">{selectedOrder.pdfPassword || "-"}</p>
-                </div>
+              {!selectedOrder.files || selectedOrder.files.length === 0 ? (
+                selectedOrder.pdfPasswordRequired ? (
+                  <div>
+                    <p className="text-gray-500 dark:text-gray-400">PDF Password</p>
+                    <p className="font-medium">{selectedOrder.pdfPassword || "-"}</p>
+                  </div>
+                ) : null
               ) : null}
 
               <div className="grid grid-cols-2 gap-3">
@@ -4647,7 +4649,31 @@ export default function AdminPortalPage() {
                 </div>
               </div>
 
-              {selectedOrder.fileURL ? (
+              {selectedOrder.files && selectedOrder.files.length > 0 ? (
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400 mb-2">Uploaded Files ({selectedOrder.files.length})</p>
+                  <div className="space-y-2">
+                    {selectedOrder.files.map((file: any, i: number) => (
+                      <div key={i} className="flex flex-col gap-1 p-2 rounded-lg border border-gray-100 dark:border-white/10 bg-white/50 dark:bg-black/20">
+                        <a
+                          href={file.fileURL}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm font-medium hover:underline text-indigo-600 dark:text-cyan-400 truncate"
+                        >
+                          {file.fileOriginalName || `File ${i + 1}`}
+                        </a>
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <span>{file.pages} pages</span>
+                          {file.pdfPasswordRequired && (
+                            <span className="text-amber-500 font-medium">PW: {file.pdfPassword || "Required"}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : selectedOrder.fileURL ? (
                 <a
                   href={selectedOrder.fileURL}
                   target="_blank"

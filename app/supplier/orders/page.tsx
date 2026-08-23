@@ -742,15 +742,7 @@ Final Price: ₹{selectedOrder.finalPrice}
 
 <p>Alternate Phone: {selectedOrder.alternatePhone?.trim() || "None"}</p>
 
-{selectedOrder.pdfPasswordRequired ? (
-selectedOrder.pdfPassword ? (
-<p>PDF Password: {selectedOrder.pdfPassword}</p>
-) : (
-<p className="text-amber-400">
-This PDF is locked. Accept the order to reveal the password and open the file.
-</p>
-)
-) : null}
+
 
 <p>Status: {formatStatus(selectedOrder.status)}</p>
 <p>Payment: {selectedOrder.paymentStatus}</p>
@@ -771,6 +763,11 @@ Created:
           <p className="text-xs text-gray-400">
             {file.verifiedPages ?? file.pages ?? 0} pages
           </p>
+          {file.pdfPasswordRequired && (
+            <p className="text-xs text-amber-400 mt-1">
+              PW: {file.pdfPassword || (selectedOrder.status === 'PENDING' ? "Accept order to reveal" : "Not provided")}
+            </p>
+          )}
         </div>
         {file.fileURL && (
           <a
@@ -784,14 +781,25 @@ Created:
       </div>
     ))}
   </div>
-) : selectedOrder.fileURL ? (
-  <a
-    href={selectedOrder.fileURL}
-    target="_blank"
-    className="text-indigo-400 underline"
-  >
-    Preview Uploaded File
-  </a>
+) : null}
+
+{!selectedOrder.files || selectedOrder.files.length === 0 ? (
+  <>
+    {selectedOrder.pdfPasswordRequired && (
+      <p className="text-xs text-amber-400 mt-1 mb-2">
+        PDF Password: {selectedOrder.pdfPassword || (selectedOrder.status === 'PENDING' ? "Accept the order to reveal" : "Not provided")}
+      </p>
+    )}
+    {selectedOrder.fileURL && (
+      <a
+        href={selectedOrder.fileURL}
+        target="_blank"
+        className="text-indigo-400 underline"
+      >
+        Preview Uploaded File
+      </a>
+    )}
+  </>
 ) : null}
 
 {/* Give Discount Section */}
