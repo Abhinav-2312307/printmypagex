@@ -411,7 +411,7 @@ async function processAndUploadSingleFile(
         ok: false,
         response: NextResponse.json(
           {
-            error: `File ${fileIndex + 1} ("${file.name}"): This PDF is locked. Enter the PDF password so we can count pages.`,
+            error: `File ${fileIndex + 1} ("${file.name}"): ur file is protected give password`,
             code: "PDF_PASSWORD_REQUIRED",
             requiresPdfPassword: true,
             fileIndex
