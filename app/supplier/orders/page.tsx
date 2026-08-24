@@ -433,13 +433,13 @@ status.replace(/_/g," ").toUpperCase()
 
 let displayOrders:SupplierOrderDetail[]=[]
 
-if(filter==="pending") displayOrders=available
-if(filter==="accepted") displayOrders=orders.filter(o=>o.status==="accepted")
-if(filter==="awaiting_payment") displayOrders=orders.filter(o=>o.status==="awaiting_payment")
-if(filter==="printing") displayOrders=orders.filter(o=>o.status==="printing")
-if(filter==="paid") displayOrders=orders.filter(o=>o.paymentStatus==="paid")
-if(filter==="printed") displayOrders=orders.filter(o=>o.status==="printed")
-if(filter==="delivered") displayOrders=orders.filter(o=>o.status==="delivered")
+if(filter==="pending") displayOrders=available.filter(o=>o.paymentStatus!=="refunded")
+if(filter==="accepted") displayOrders=orders.filter(o=>o.status==="accepted" && o.paymentStatus!=="refunded")
+if(filter==="awaiting_payment") displayOrders=orders.filter(o=>o.status==="awaiting_payment" && o.paymentStatus!=="refunded")
+if(filter==="printing") displayOrders=orders.filter(o=>o.status==="printing" && o.paymentStatus!=="refunded")
+if(filter==="printed") displayOrders=orders.filter(o=>o.status==="printed" && o.paymentStatus!=="refunded")
+if(filter==="delivered") displayOrders=orders.filter(o=>o.status==="delivered" && o.paymentStatus!=="refunded")
+if(filter==="refunded") displayOrders=orders.filter(o=>o.paymentStatus==="refunded")
 
 if(filter==="all"){
 const map = new Map()
@@ -466,9 +466,9 @@ Supplier Orders
 ["accepted","Accepted"],
 ["awaiting_payment","Awaiting Payment"],
 ["printing","Printing"],
-["paid","Paid"],
 ["printed","Printed"],
 ["delivered","Delivered"],
+["refunded","Refunded"],
 ["all","All Orders"]
 ].map(([key,label])=>(
 
