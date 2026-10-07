@@ -15,9 +15,11 @@ import {
   UPLOAD_POLICY_HELPER_TEXT,
   requiresManualPageCount,
   UPLOAD_ACCEPT_ATTRIBUTE,
-  MAX_FILES_PER_ORDER
+  MAX_FILES_PER_ORDER,
+  shouldUploadDirectlyToCloudinary
 } from "@/lib/upload-file"
 import { prepareFileForUpload } from "@/lib/client-upload-preprocess"
+import { uploadLargeFileDirectly } from "@/lib/direct-upload"
 
 import {
   ResponsiveContainer,
@@ -429,76 +431,132 @@ export default function UserDashboard() {
         const isFirstFile = i === 0
         const isLastFile = i === fileEntries.length - 1
 
-        const { file: uploadFile, wasCompressed } = await prepareFileForUpload(entry.file)
-        
-        const formData = new FormData()
-        formData.append("file", uploadFile)
-        formData.append("originalFileName", entry.file.name)
-        formData.append("originalFileType", entry.file.type)
-        formData.append("printType", printType)
-        formData.append("firebaseUID", user.uid)
-        
-        if (isFirstFile) {
-          formData.append("requestType", requestType)
-          formData.append("supplier", supplier)
-          formData.append("copies", String(parsedCopies))
-          formData.append("alternatePhone", alternatePhone)
-          formData.append("duplex", String(duplex))
-          formData.append("spiralBinding", String(spiralBinding))
-          formData.append("instruction", instruction)
-        } else if (currentOrderId) {
-          formData.append("appendOrderId", currentOrderId)
-        }
+        const isLargeFile = shouldUploadDirectlyToCloudinary(entry.file)
+        let res: Response
 
-        if (isLastFile) {
-          formData.append("isLastFile", "true")
-        }
-
-        if (entry.pageCount) {
-          formData.append("pageCount", entry.pageCount)
-        }
-        if (isPdfUploadFile(entry.file) && entry.pdfPassword) {
-          formData.append("pdfPassword", entry.pdfPassword)
-        }
-        
-        const res = await authUploadWithProgress(
-          "/api/upload",
-          { method: "POST", body: formData },
-          {
-            onUploadProgress: ({ loaded, total }) => {
-              const now = Date.now()
-              const elapsedSinceLastMeasure = now - lastMeasuredAt
-              if (elapsedSinceLastMeasure > 0) {
-                const nextSpeed = ((loaded - lastLoaded) * 1000) / elapsedSinceLastMeasure
-                if (Number.isFinite(nextSpeed) && nextSpeed > 0) {
-                  lastSpeedBytesPerSecond = nextSpeed
-                }
-              }
-              lastLoaded = loaded
-              lastMeasuredAt = now
-              setUploadProgress({
-                stage: "uploading",
-                startedAt,
-                loaded,
-                total,
-                speedBytesPerSecond: lastSpeedBytesPerSecond
-              })
-            },
-            onUploadComplete: () => {
-              setUploadProgress((current) => {
-                if (!current) return current
-                const completedBytes = current.total ?? current.loaded
-                return {
-                  ...current,
-                  stage: "processing",
-                  loaded: completedBytes,
-                  total: current.total ?? (completedBytes || null),
-                  speedBytesPerSecond: null
-                }
-              })
+        const handleProgress = ({ loaded, total }: { loaded: number; total: number | null }) => {
+          const now = Date.now()
+          const elapsedSinceLastMeasure = now - lastMeasuredAt
+          if (elapsedSinceLastMeasure > 0) {
+            const nextSpeed = ((loaded - lastLoaded) * 1000) / elapsedSinceLastMeasure
+            if (Number.isFinite(nextSpeed) && nextSpeed > 0) {
+              lastSpeedBytesPerSecond = nextSpeed
             }
           }
-        )
+          lastLoaded = loaded
+          lastMeasuredAt = now
+          setUploadProgress({
+            stage: "uploading",
+            startedAt,
+            loaded,
+            total,
+            speedBytesPerSecond: lastSpeedBytesPerSecond
+          })
+        }
+
+        const handleComplete = () => {
+          setUploadProgress((current) => {
+            if (!current) return current
+            const completedBytes = current.total ?? current.loaded
+            return {
+              ...current,
+              stage: "processing",
+              loaded: completedBytes,
+              total: current.total ?? (completedBytes || null),
+              speedBytesPerSecond: null
+            }
+          })
+        }
+
+        if (isLargeFile) {
+          const directResult = await uploadLargeFileDirectly(entry.file, handleProgress)
+          handleComplete()
+
+          const formData = new FormData()
+          formData.append("isDirectUpload", "true")
+          formData.append("storageURL", directResult.storageURL)
+          if (directResult.storageChunkURLs && directResult.storageChunkURLs.length > 0) {
+            formData.append("storageChunkURLs", JSON.stringify(directResult.storageChunkURLs))
+          }
+          formData.append("storageEncoding", directResult.storageEncoding)
+          formData.append("fileAccessToken", directResult.accessToken)
+          formData.append("fileOriginalSizeBytes", String(entry.file.size))
+          formData.append("fileStoredSizeBytes", String(directResult.storedSizeBytes))
+          formData.append("originalFileName", entry.file.name)
+          formData.append("originalFileType", entry.file.type)
+          formData.append("pages", String(entry.detectedPages || entry.pageCount || 1))
+          formData.append("printType", printType)
+          formData.append("firebaseUID", user.uid)
+
+          if (isPdfUploadFile(entry.file) && entry.pdfPassword) {
+            formData.append("pdfPassword", entry.pdfPassword)
+            formData.append("pdfPasswordRequired", "true")
+          } else if (entry.needsPdfPassword) {
+            formData.append("pdfPasswordRequired", "true")
+          }
+
+          if (isFirstFile) {
+            formData.append("requestType", requestType)
+            formData.append("supplier", supplier)
+            formData.append("copies", String(parsedCopies))
+            formData.append("alternatePhone", alternatePhone)
+            formData.append("duplex", String(duplex))
+            formData.append("spiralBinding", String(spiralBinding))
+            formData.append("instruction", instruction)
+          } else if (currentOrderId) {
+            formData.append("appendOrderId", currentOrderId)
+          }
+
+          if (isLastFile) {
+            formData.append("isLastFile", "true")
+          }
+
+          res = await authUploadWithProgress(
+            "/api/upload",
+            { method: "POST", body: formData }
+          )
+        } else {
+          const { file: uploadFile } = await prepareFileForUpload(entry.file)
+          
+          const formData = new FormData()
+          formData.append("file", uploadFile)
+          formData.append("originalFileName", entry.file.name)
+          formData.append("originalFileType", entry.file.type)
+          formData.append("printType", printType)
+          formData.append("firebaseUID", user.uid)
+          
+          if (isFirstFile) {
+            formData.append("requestType", requestType)
+            formData.append("supplier", supplier)
+            formData.append("copies", String(parsedCopies))
+            formData.append("alternatePhone", alternatePhone)
+            formData.append("duplex", String(duplex))
+            formData.append("spiralBinding", String(spiralBinding))
+            formData.append("instruction", instruction)
+          } else if (currentOrderId) {
+            formData.append("appendOrderId", currentOrderId)
+          }
+
+          if (isLastFile) {
+            formData.append("isLastFile", "true")
+          }
+
+          if (entry.pageCount) {
+            formData.append("pageCount", entry.pageCount)
+          }
+          if (isPdfUploadFile(entry.file) && entry.pdfPassword) {
+            formData.append("pdfPassword", entry.pdfPassword)
+          }
+          
+          res = await authUploadWithProgress(
+            "/api/upload",
+            { method: "POST", body: formData },
+            {
+              onUploadProgress: handleProgress,
+              onUploadComplete: handleComplete
+            }
+          )
+        }
 
         const { data, rawText } = await readJsonResponseSafely<UploadResponseData>(res)
         

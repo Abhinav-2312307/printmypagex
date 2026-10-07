@@ -601,15 +601,16 @@ export async function POST(req: Request) {
     
     const appendOrderId = String(formData.get("appendOrderId") || "").trim()
     const isLastFile = formData.get("isLastFile") === "true"
+    const isDirectUpload = formData.get("isDirectUpload") === "true"
 
-    if (files.length === 0) {
+    if (!isDirectUpload && files.length === 0) {
       return NextResponse.json(
         { error: "At least one file is required" },
         { status: 400 }
       )
     }
 
-    if (files.length > MAX_FILES_PER_ORDER) {
+    if (!isDirectUpload && files.length > MAX_FILES_PER_ORDER) {
       return NextResponse.json(
         { error: `You can upload up to ${MAX_FILES_PER_ORDER} files per order` },
         { status: 400 }
@@ -677,7 +678,9 @@ export async function POST(req: Request) {
     }
 
     // Build fingerprint from all file names and sizes
-    const fileFingerprints = files.map((f) => `${f.name}:${f.size}:${f.type}`).join("|")
+    const fileFingerprints = isDirectUpload
+      ? `direct:${formData.get("storageURL")}:${formData.get("fileOriginalSizeBytes")}:${formData.get("originalFileName")}`
+      : files.map((f) => `${f.name}:${f.size}:${f.type}`).join("|")
     const payloadFingerprint = buildSubmissionFingerprint([
       firebaseUID,
       fileFingerprints,
@@ -722,7 +725,8 @@ export async function POST(req: Request) {
       hasUserEmailInPayload: Boolean(userEmail),
       hasUserEmailInDB: Boolean(user?.email),
       hasUserNameInDB: Boolean(user?.name),
-      fileCount: files.length
+      fileCount: files.length,
+      isDirectUpload
     })
 
     if (!user) {
@@ -747,32 +751,84 @@ export async function POST(req: Request) {
       })
     }
 
-    // Process each file sequentially to avoid overwhelming Cloudinary
+    // Process files
     const processedFiles: ProcessedFileEntry[] = []
     let totalPages = 0
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
-      const filePageCount = pageCountEntries[i] || (files.length === 1 ? legacyPageCount : "")
-      const filePdfPassword = pdfPasswordEntries[i] || (files.length === 1 ? pdfPassword : "")
-      const fileOriginalName = originalFileNameEntries[i] || (files.length === 1 ? legacyOriginalFileName : "")
-      const fileOriginalType = originalFileTypeEntries[i] || (files.length === 1 ? legacyOriginalFileType : "")
+    if (isDirectUpload) {
+      const storageURL = String(formData.get("storageURL") || "").trim()
+      const rawChunkURLs = String(formData.get("storageChunkURLs") || "").trim()
+      let storageChunkURLs: string[] = []
+      if (rawChunkURLs) {
+        try {
+          const parsed = JSON.parse(rawChunkURLs)
+          if (Array.isArray(parsed)) {
+            storageChunkURLs = parsed.map((u) => String(u || "")).filter(Boolean)
+          }
+        } catch {
+          storageChunkURLs = []
+        }
+      }
+      const storageEncoding = (formData.get("storageEncoding") as StorageEncoding) || "none"
+      const fileAccessToken = String(formData.get("fileAccessToken") || "").trim()
+      const originalFileName = String(formData.get("originalFileName") || legacyOriginalFileName || "file").trim()
+      const originalFileType = String(formData.get("originalFileType") || legacyOriginalFileType || "application/octet-stream").trim()
+      const fileOriginalSizeBytes = Number(formData.get("fileOriginalSizeBytes")) || 0
+      const fileStoredSizeBytes = Number(formData.get("fileStoredSizeBytes")) || 0
+      const filePages = Math.max(1, Number(formData.get("pages")) || 1)
+      const pdfPasswordRequired = formData.get("pdfPasswordRequired") === "true"
 
-      const result = await processAndUploadSingleFile(
-        file,
-        fileOriginalName,
-        fileOriginalType,
-        filePageCount,
-        filePdfPassword,
-        i
-      )
-
-      if (!result.ok) {
-        return result.response
+      if (!storageURL && storageChunkURLs.length === 0) {
+        return NextResponse.json(
+          { error: "Direct storage URL is missing" },
+          { status: 400 }
+        )
       }
 
-      processedFiles.push(result.entry)
-      totalPages += result.entry.pages
+      const usesProxyAccess = storageEncoding === "gzip" || storageChunkURLs.length > 1
+      const accessURL = usesProxyAccess ? buildOrderFileAccessPath(fileAccessToken) : storageURL
+
+      processedFiles.push({
+        fileURL: accessURL,
+        storageURL: storageChunkURLs.length > 1 ? "" : storageURL,
+        storageChunkURLs,
+        fileOriginalName: originalFileName,
+        fileMimeType: originalFileType,
+        fileStorageEncoding: storageEncoding,
+        fileAccessToken,
+        fileOriginalSizeBytes,
+        fileStoredSizeBytes,
+        pdfPasswordRequired,
+        pdfPassword: pdfPasswordRequired ? pdfPassword : "",
+        pages: filePages,
+        verifiedPages: null
+      })
+      totalPages = filePages
+    } else {
+      // Process each file sequentially to avoid overwhelming Cloudinary
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        const filePageCount = pageCountEntries[i] || (files.length === 1 ? legacyPageCount : "")
+        const filePdfPassword = pdfPasswordEntries[i] || (files.length === 1 ? pdfPassword : "")
+        const fileOriginalName = originalFileNameEntries[i] || (files.length === 1 ? legacyOriginalFileName : "")
+        const fileOriginalType = originalFileTypeEntries[i] || (files.length === 1 ? legacyOriginalFileType : "")
+
+        const result = await processAndUploadSingleFile(
+          file,
+          fileOriginalName,
+          fileOriginalType,
+          filePageCount,
+          filePdfPassword,
+          i
+        )
+
+        if (!result.ok) {
+          return result.response
+        }
+
+        processedFiles.push(result.entry)
+        totalPages += result.entry.pages
+      }
     }
 
     // CREATE OR UPDATE ORDER
