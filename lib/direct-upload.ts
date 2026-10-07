@@ -2,6 +2,7 @@
 
 import { authFetch, readJsonResponseSafely } from "./client-auth"
 import { SAFE_CLOUDINARY_UPLOAD_TARGET_BYTES } from "./upload-file"
+import { reportClientErrorToAdmin } from "./client-error-reporter"
 
 export type DirectUploadResult = {
   storageURL: string
@@ -154,9 +155,19 @@ export async function uploadLargeFileDirectly(
   }>(signRes)
 
   if (!signRes.ok || !signData || !signData.chunks || signData.chunks.length === 0) {
-    throw new Error(
-      signData?.error || rawText.trim() || "Failed to get upload authorization"
-    )
+    const errorMsg = signData?.error || rawText.trim() || "Failed to get upload authorization"
+    reportClientErrorToAdmin({
+      action: "upload.sign_rejected",
+      message: `Upload authorization rejected for "${file.name}": ${errorMsg}`,
+      level: "warning",
+      metadata: {
+        fileName: file.name,
+        fileSize: file.size,
+        chunkCount: chunks.length,
+        error: errorMsg
+      }
+    })
+    throw new Error(errorMsg)
   }
 
   const uploadEndpoint = `https://api.cloudinary.com/v1_1/${signData.cloudName}/${signData.resourceType}/upload`
@@ -165,39 +176,54 @@ export async function uploadLargeFileDirectly(
   let totalUploadedBytes = 0
 
   // Step 4: Upload each chunk sequentially (under 9.5 MB each)
-  for (let i = 0; i < chunks.length; i++) {
-    const chunkBlob = chunks[i]
-    const chunkSign = signData.chunks[i]
-    const partLabel = chunks.length > 1 ? `.part-${i + 1}` : ""
-    const fileNameForPart = isGzipped
-      ? `${file.name}.gz${partLabel}`
-      : `${file.name}${partLabel}`
+  try {
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkBlob = chunks[i]
+      const chunkSign = signData.chunks[i]
+      const partLabel = chunks.length > 1 ? `.part-${i + 1}` : ""
+      const fileNameForPart = isGzipped
+        ? `${file.name}.gz${partLabel}`
+        : `${file.name}${partLabel}`
 
-    const cloudinaryFormData = new FormData()
-    cloudinaryFormData.append("file", chunkBlob, fileNameForPart)
-    cloudinaryFormData.append("api_key", signData.apiKey)
-    cloudinaryFormData.append("timestamp", String(signData.timestamp))
-    cloudinaryFormData.append("signature", chunkSign.signature)
-    cloudinaryFormData.append("folder", signData.folder)
-    cloudinaryFormData.append("public_id", chunkSign.publicId)
+      const cloudinaryFormData = new FormData()
+      cloudinaryFormData.append("file", chunkBlob, fileNameForPart)
+      cloudinaryFormData.append("api_key", signData.apiKey)
+      cloudinaryFormData.append("timestamp", String(signData.timestamp))
+      cloudinaryFormData.append("signature", chunkSign.signature)
+      cloudinaryFormData.append("folder", signData.folder)
+      cloudinaryFormData.append("public_id", chunkSign.publicId)
 
-    let previousChunkLoaded = 0
+      let previousChunkLoaded = 0
 
-    const chunkResult = await uploadSingleBlobWithProgress(
-      uploadEndpoint,
-      cloudinaryFormData,
-      (progress) => {
-        const delta = progress.loaded - previousChunkLoaded
-        previousChunkLoaded = progress.loaded
-        totalUploadedBytes += delta
-        onProgress?.({
-          loaded: totalUploadedBytes,
-          total: totalPayloadSize
-        })
+      const chunkResult = await uploadSingleBlobWithProgress(
+        uploadEndpoint,
+        cloudinaryFormData,
+        (progress) => {
+          const delta = progress.loaded - previousChunkLoaded
+          previousChunkLoaded = progress.loaded
+          totalUploadedBytes += delta
+          onProgress?.({
+            loaded: totalUploadedBytes,
+            total: totalPayloadSize
+          })
+        }
+      )
+
+      chunkUrls.push(chunkResult.secure_url)
+    }
+  } catch (err: any) {
+    reportClientErrorToAdmin({
+      action: "upload.storage_rejected",
+      message: `Direct storage upload failed for "${file.name}": ${err?.message || "Storage error"}`,
+      level: "error",
+      metadata: {
+        fileName: file.name,
+        fileSize: file.size,
+        chunkCount: chunks.length,
+        error: err?.message || String(err)
       }
-    )
-
-    chunkUrls.push(chunkResult.secure_url)
+    })
+    throw err
   }
 
   return {

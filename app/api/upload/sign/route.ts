@@ -7,6 +7,7 @@ import {
   isAcceptedUploadFile,
   isImageUploadFile
 } from "@/lib/upload-file"
+import { recordActivity } from "@/lib/activity-log"
 
 export const runtime = "nodejs"
 
@@ -38,6 +39,17 @@ export async function POST(req: Request) {
 
     const pseudoFile = { name: fileName, type: fileType }
     if (!isAcceptedUploadFile(pseudoFile)) {
+      await recordActivity({
+        actorType: "user",
+        actorUID: auth.uid,
+        actorEmail: auth.email,
+        action: "upload.unsupported_type",
+        entityType: "upload_sign",
+        level: "warning",
+        message: `Sign rejected for unsupported file type: "${fileName}" (${fileType || "unknown"})`,
+        req,
+        metadata: { fileName, fileType, fileSize }
+      })
       return NextResponse.json(
         { error: `File "${fileName}": Unsupported file type.` },
         { status: 400 }
@@ -46,6 +58,17 @@ export async function POST(req: Request) {
 
     const uploadLimit = getUploadLimitInfo(pseudoFile)
     if (fileSize > uploadLimit.maxBytes) {
+      await recordActivity({
+        actorType: "user",
+        actorUID: auth.uid,
+        actorEmail: auth.email,
+        action: "upload.size_exceeded",
+        entityType: "upload_sign",
+        level: "warning",
+        message: `Sign rejected for oversized file: "${fileName}" (${(fileSize / (1024 * 1024)).toFixed(2)} MB, max ${uploadLimit.maxMb} MB)`,
+        req,
+        metadata: { fileName, fileSize, maxBytes: uploadLimit.maxBytes }
+      })
       return NextResponse.json(
         { error: `File "${fileName}": File size exceeds the ${uploadLimit.maxMb} MB limit.` },
         { status: 413 }
@@ -58,6 +81,14 @@ export async function POST(req: Request) {
 
     if (!cloudName || !apiKey || !apiSecret) {
       console.error("CLOUDINARY_CONFIG_MISSING in /api/upload/sign")
+      await recordActivity({
+        actorType: "system",
+        action: "upload.sign_config_missing",
+        entityType: "system",
+        level: "error",
+        message: "Cloudinary configuration variables are missing on server in /api/upload/sign",
+        req
+      })
       return NextResponse.json(
         { error: "Cloudinary configuration is missing on server" },
         { status: 500 }
@@ -118,6 +149,15 @@ export async function POST(req: Request) {
     })
   } catch (err: any) {
     console.error("UPLOAD_SIGN_ERROR:", err)
+    await recordActivity({
+      actorType: "user",
+      action: "upload.sign_failed",
+      entityType: "upload_sign",
+      level: "error",
+      message: `Upload signature generation failed: ${err?.message || "Unknown error"}`,
+      req,
+      metadata: { error: err?.message || String(err) }
+    })
     return NextResponse.json(
       { error: err?.message || "Failed to generate upload signature" },
       { status: 500 }

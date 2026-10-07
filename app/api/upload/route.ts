@@ -348,13 +348,34 @@ async function processAndUploadSingleFile(
   originalFileTypeInput: string,
   manualPageCountValue: string,
   pdfPassword: string,
-  fileIndex: number
+  fileIndex: number,
+  context?: {
+    actorUID?: string
+    actorEmail?: string
+    req?: Request
+  }
 ): Promise<
   | { ok: true; entry: ProcessedFileEntry }
   | { ok: false; response: ReturnType<typeof NextResponse.json> }
 > {
   // Validate file type
   if (!isAcceptedUploadFile(file)) {
+    await recordActivity({
+      actorType: "user",
+      actorUID: context?.actorUID,
+      actorEmail: context?.actorEmail,
+      action: "upload.unsupported_type",
+      entityType: "upload",
+      level: "warning",
+      message: `File ${fileIndex + 1} ("${file.name}"): Unsupported file type (${file.type || "unknown"}).`,
+      req: context?.req,
+      metadata: {
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        fileIndex
+      }
+    })
     return {
       ok: false,
       response: NextResponse.json(
@@ -367,6 +388,22 @@ async function processAndUploadSingleFile(
   // Validate file size
   const uploadLimit = getUploadLimitInfo(file)
   if (file.size > uploadLimit.maxBytes) {
+    await recordActivity({
+      actorType: "user",
+      actorUID: context?.actorUID,
+      actorEmail: context?.actorEmail,
+      action: "upload.size_exceeded",
+      entityType: "upload",
+      level: "warning",
+      message: `File ${fileIndex + 1} ("${file.name}"): Exceeds ${uploadLimit.maxMb} MB limit (${(file.size / (1024 * 1024)).toFixed(2)} MB).`,
+      req: context?.req,
+      metadata: {
+        fileName: file.name,
+        fileSize: file.size,
+        maxLimitBytes: uploadLimit.maxBytes,
+        fileIndex
+      }
+    })
     return {
       ok: false,
       response: NextResponse.json(
@@ -389,6 +426,17 @@ async function processAndUploadSingleFile(
     const parsedPageCount = Number.parseInt(manualPageCountValue, 10)
 
     if (!Number.isInteger(parsedPageCount) || parsedPageCount < 1) {
+      await recordActivity({
+        actorType: "user",
+        actorUID: context?.actorUID,
+        actorEmail: context?.actorEmail,
+        action: "upload.page_count_required",
+        entityType: "upload",
+        level: "info",
+        message: `File ${fileIndex + 1} ("${file.name}"): Enter a valid page count for DOC/DOCX.`,
+        req: context?.req,
+        metadata: { fileName: file.name, manualPageCountValue, fileIndex }
+      })
       return {
         ok: false,
         response: NextResponse.json(
@@ -407,6 +455,17 @@ async function processAndUploadSingleFile(
     const pdfPageResolution = await resolvePdfPageCount(buffer, pdfPassword)
 
     if (pdfPageResolution.status === "password_required") {
+      await recordActivity({
+        actorType: "user",
+        actorUID: context?.actorUID,
+        actorEmail: context?.actorEmail,
+        action: "upload.pdf_password_required",
+        entityType: "upload",
+        level: "info",
+        message: `File ${fileIndex + 1} ("${file.name}"): Protected PDF requires password.`,
+        req: context?.req,
+        metadata: { fileName: file.name, fileIndex }
+      })
       return {
         ok: false,
         response: NextResponse.json(
@@ -422,6 +481,17 @@ async function processAndUploadSingleFile(
     }
 
     if (pdfPageResolution.status === "incorrect_password") {
+      await recordActivity({
+        actorType: "user",
+        actorUID: context?.actorUID,
+        actorEmail: context?.actorEmail,
+        action: "upload.pdf_password_invalid",
+        entityType: "upload",
+        level: "warning",
+        message: `File ${fileIndex + 1} ("${file.name}"): Incorrect password entered for PDF.`,
+        req: context?.req,
+        metadata: { fileName: file.name, fileIndex }
+      })
       return {
         ok: false,
         response: NextResponse.json(
@@ -438,6 +508,17 @@ async function processAndUploadSingleFile(
 
     if (pdfPageResolution.status === "unreadable") {
       console.error("PDF parse error:", pdfPageResolution.error)
+      await recordActivity({
+        actorType: "user",
+        actorUID: context?.actorUID,
+        actorEmail: context?.actorEmail,
+        action: "upload.pdf_unreadable",
+        entityType: "upload",
+        level: "warning",
+        message: `File ${fileIndex + 1} ("${file.name}"): Could not read/parse PDF: ${String(pdfPageResolution.error)}`,
+        req: context?.req,
+        metadata: { fileName: file.name, fileIndex, error: String(pdfPageResolution.error) }
+      })
       return {
         ok: false,
         response: NextResponse.json(
@@ -557,10 +638,15 @@ async function processAndUploadSingleFile(
 }
 
 export async function POST(req: Request) {
+  let actorUID: string | null = null
+  let actorEmail: string | null = null
 
   try {
     const auth = await authenticateUserRequest(req)
     if (!auth.ok) return auth.response
+
+    actorUID = auth.uid
+    actorEmail = auth.email
 
     await connectDB()
 
@@ -711,6 +797,20 @@ export async function POST(req: Request) {
     ])
 
     if (!guard.allowed) {
+      await recordActivity({
+        actorType: "user",
+        actorUID: firebaseUID,
+        actorEmail: auth.email,
+        action: "upload.rate_limited",
+        entityType: "order",
+        level: "warning",
+        message: `Order upload throttled by rate limit guard (retry after ${guard.retryAfterSeconds}s)`,
+        req,
+        metadata: {
+          retryAfterSeconds: guard.retryAfterSeconds,
+          firebaseUID
+        }
+      })
       return createSubmissionLimitResponse(
         "Too many order creation requests were sent from this account or device.",
         guard.retryAfterSeconds
@@ -779,6 +879,17 @@ export async function POST(req: Request) {
       const pdfPasswordRequired = formData.get("pdfPasswordRequired") === "true"
 
       if (!storageURL && storageChunkURLs.length === 0) {
+        await recordActivity({
+          actorType: "user",
+          actorUID: firebaseUID,
+          actorEmail: auth.email,
+          action: "upload.invalid_direct_storage",
+          entityType: "upload",
+          level: "error",
+          message: `Direct storage URL missing for "${originalFileName}"`,
+          req,
+          metadata: { originalFileName, fileAccessToken }
+        })
         return NextResponse.json(
           { error: "Direct storage URL is missing" },
           { status: 400 }
@@ -819,7 +930,12 @@ export async function POST(req: Request) {
           fileOriginalType,
           filePageCount,
           filePdfPassword,
-          i
+          i,
+          {
+            actorUID: firebaseUID,
+            actorEmail: auth.email,
+            req
+          }
         )
 
         if (!result.ok) {
@@ -840,6 +956,17 @@ export async function POST(req: Request) {
       order = await Order.findOne({ _id: appendOrderId, userUID: firebaseUID })
       
       if (!order) {
+        await recordActivity({
+          actorType: "user",
+          actorUID: firebaseUID,
+          actorEmail: auth.email,
+          action: "upload.append_order_not_found",
+          entityType: "order",
+          level: "warning",
+          message: `Order not found or unauthorized to append: ${appendOrderId}`,
+          req,
+          metadata: { appendOrderId }
+        })
         return NextResponse.json({ error: "Order not found or unauthorized to append." }, { status: 404 })
       }
       
@@ -993,7 +1120,7 @@ export async function POST(req: Request) {
       order
     })
 
-  } catch (err) {
+  } catch (err: any) {
 
     console.error("UPLOAD ERROR:", err)
 
@@ -1003,9 +1130,24 @@ export async function POST(req: Request) {
       "message" in err &&
       typeof (err as UploadApiErrorResponse).message === "string"
         ? (err as UploadApiErrorResponse).message
-        : ""
+        : (err?.message || "Upload failed")
 
-    if (uploadErrorMessage) {
+    await recordActivity({
+      actorType: "user",
+      actorUID,
+      actorEmail,
+      action: "upload.failed",
+      entityType: "upload",
+      level: "error",
+      message: `Order upload failed: ${uploadErrorMessage}`,
+      req,
+      metadata: {
+        error: uploadErrorMessage,
+        stack: err?.stack ? String(err.stack).slice(0, 500) : undefined
+      }
+    })
+
+    if (uploadErrorMessage && uploadErrorMessage !== "Upload failed") {
       return NextResponse.json(
         { error: uploadErrorMessage },
         { status: 400 }

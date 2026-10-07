@@ -20,6 +20,7 @@ import {
 } from "@/lib/upload-file"
 import { prepareFileForUpload } from "@/lib/client-upload-preprocess"
 import { uploadLargeFileDirectly } from "@/lib/direct-upload"
+import { reportClientErrorToAdmin } from "@/lib/client-error-reporter"
 
 import {
   ResponsiveContainer,
@@ -304,17 +305,42 @@ export default function UserDashboard() {
     const filesToAdd = newFiles.slice(0, available)
 
     if (newFiles.length > available) {
-      toast.error(`You can upload up to ${MAX_FILES_PER_ORDER} files. ${newFiles.length - available} file(s) were skipped.`)
+      const msg = `You can upload up to ${MAX_FILES_PER_ORDER} files. ${newFiles.length - available} file(s) were skipped.`
+      toast.error(msg)
+      reportClientErrorToAdmin({
+        action: "upload.file_limit_exceeded",
+        message: msg,
+        level: "warning",
+        metadata: {
+          totalFilesSelected: newFiles.length,
+          alreadySelected: currentCount,
+          maxAllowed: MAX_FILES_PER_ORDER
+        }
+      })
     }
 
     const validFiles = filesToAdd.filter((file) => {
       if (!isAcceptedUploadFile(file)) {
-        toast.error(`"${file.name}" is not a supported file type.`)
+        const msg = `"${file.name}" is not a supported file type.`
+        toast.error(msg)
+        reportClientErrorToAdmin({
+          action: "upload.unsupported_type",
+          message: msg,
+          level: "warning",
+          metadata: { fileName: file.name, fileType: file.type, fileSize: file.size }
+        })
         return false
       }
       const limit = getUploadLimitInfo(file)
       if (file.size > limit.maxBytes) {
-        toast.error(`"${file.name}": ${getUploadLimitErrorMessage(file)}`)
+        const msg = `"${file.name}": ${getUploadLimitErrorMessage(file)}`
+        toast.error(msg)
+        reportClientErrorToAdmin({
+          action: "upload.size_exceeded",
+          message: msg,
+          level: "warning",
+          metadata: { fileName: file.name, fileSize: file.size, maxLimitBytes: limit.maxBytes }
+        })
         return false
       }
       return true
@@ -565,6 +591,18 @@ export default function UserDashboard() {
           if (data?.requiresPdfPassword) {
             updateFileEntry(entry.id, { needsPdfPassword: true })
           }
+          reportClientErrorToAdmin({
+            action: data?.requiresPdfPassword ? "upload.pdf_password_required" : "upload.rejected",
+            message: `Order upload failed on "${entry.file.name}": ${uploadErrorMessage}`,
+            level: data?.requiresPdfPassword ? "info" : "error",
+            metadata: {
+              fileName: entry.file.name,
+              fileSize: entry.file.size,
+              orderId: currentOrderId || undefined,
+              status: res.status,
+              error: uploadErrorMessage
+            }
+          })
           toast.error(`Error on file "${entry.file.name}": ${uploadErrorMessage}`)
           return
         }
@@ -596,7 +634,17 @@ export default function UserDashboard() {
         fileInputRef.current.value = ""
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Upload failed")
+      const errorMsg = error instanceof Error ? error.message : "Upload failed"
+      reportClientErrorToAdmin({
+        action: "order.submission_failed",
+        message: `Order creation submission failed: ${errorMsg}`,
+        level: "error",
+        metadata: {
+          error: errorMsg,
+          fileCount: fileEntries.length
+        }
+      })
+      toast.error(errorMsg)
     } finally {
       setSubmitting(false)
       setUploadProgress(null)
