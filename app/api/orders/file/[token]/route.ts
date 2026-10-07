@@ -69,6 +69,32 @@ export async function GET(
       )
     }
 
+    if (sourceUrls.length === 1) {
+      const upstreamResponse = await fetch(sourceUrls[0], { cache: "no-store" })
+      if (!upstreamResponse.ok || !upstreamResponse.body) {
+        return NextResponse.json(
+          { success: false, message: "Failed to fetch file from storage" },
+          { status: 502 }
+        )
+      }
+
+      const stream =
+        order.fileStorageEncoding === "gzip"
+          ? upstreamResponse.body.pipeThrough(new DecompressionStream("gzip"))
+          : upstreamResponse.body
+
+      return new NextResponse(stream as any, {
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Disposition": buildContentDisposition(order.fileOriginalName || "file"),
+          "Content-Type":
+            order.fileMimeType ||
+            upstreamResponse.headers.get("content-type") ||
+            "application/octet-stream"
+        }
+      })
+    }
+
     const upstreamResponses = await Promise.all(
       sourceUrls.map((sourceUrl) => fetch(sourceUrl, { cache: "no-store" }))
     )
@@ -89,7 +115,10 @@ export async function GET(
         ? await gunzipAsync(upstreamBuffer)
         : upstreamBuffer
 
-    return new NextResponse(outputBuffer, {
+    const { Readable } = await import("node:stream")
+    const webStream = Readable.toWeb(Readable.from(outputBuffer))
+
+    return new NextResponse(webStream as any, {
       headers: {
         "Cache-Control": "no-store",
         "Content-Disposition": buildContentDisposition(order.fileOriginalName || "file"),

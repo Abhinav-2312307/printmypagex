@@ -41,6 +41,16 @@ export const CLOUDINARY_FREE_UPLOAD_SIZE_BYTES = CLOUDINARY_FREE_UPLOAD_SIZE_MB 
 export const SAFE_CLOUDINARY_UPLOAD_TARGET_BYTES =
   Math.floor(SAFE_CLOUDINARY_UPLOAD_TARGET_MB * 1024 * 1024)
 
+// Vercel Serverless Function payload limit is 4.5 MB.
+// Files under 4 MB follow the standard direct server POST path.
+// Files over 4 MB seamlessly use direct-to-Cloudinary signed upload.
+export const VERCEL_DIRECT_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024
+
+export function shouldUploadDirectlyToCloudinary(file: Pick<File, "size"> | null) {
+  if (!file) return false
+  return Number(file.size || 0) > VERCEL_DIRECT_UPLOAD_THRESHOLD_BYTES
+}
+
 export const UPLOAD_ACCEPT_ATTRIBUTE = ACCEPTED_UPLOAD_EXTENSIONS.join(",")
 export const UPLOAD_POLICY_HELPER_TEXT =
   `Upload PDF, DOC, DOCX, PNG, JPG or JPEG files up to ${MAX_PDF_UPLOAD_SIZE_MB} MB. ` +
