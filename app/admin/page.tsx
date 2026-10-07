@@ -9,13 +9,16 @@ import { RawDatabaseEditor } from "./components/RawDatabaseEditor"
 import {
   Activity,
   AlertTriangle,
+  CheckCircle2,
   CreditCard,
   Download,
   Eye,
   LogOut,
   RefreshCcw,
   Search,
+  ShieldAlert,
   Store,
+  Unlock,
   Users,
   Wallet,
   Wrench
@@ -121,6 +124,9 @@ type AdminUser = {
   paidCount?: number
   totalSpent?: number
   createdAt?: string
+  isRateLimited?: boolean
+  rateLimitBlockedUntil?: string | null
+  rateLimitReason?: string | null
 }
 
 type AdminSupplier = {
@@ -2294,6 +2300,11 @@ export default function AdminPortalPage() {
                             <span className={`px-2 py-1 rounded-full text-xs ${getStatusBadge(user.active ? "active" : "inactive")}`}>
                               {user.active ? "Active" : "Inactive"}
                             </span>
+                            {user.isRateLimited && (
+                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-500 border border-red-500/30">
+                                Rate Limited
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="p-3">{user.orderCount || 0}</td>
@@ -3270,7 +3281,7 @@ export default function AdminPortalPage() {
                       <input
                         type="number"
                         min="1"
-                        max="10"
+                        max="50"
                         value={settingsForm.maxFilesPerOrder}
                         onChange={(e) => setSettingsForm((prev) => ({ ...prev, maxFilesPerOrder: e.target.value }))}
                         className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-white/20 text-sm"
@@ -3932,6 +3943,45 @@ export default function AdminPortalPage() {
                 Edit (Raw)
               </button>
             </div>
+
+            {/* Order Submission Rate Limit Status & Unblock Action */}
+            {selectedUser.isRateLimited ? (
+              <div className="mt-4 p-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-sm text-rose-600 dark:text-rose-400">
+                        Blocked from Placing Orders (Rate Limit Hit)
+                      </p>
+                      <p className="text-xs text-rose-600/80 dark:text-rose-300/80 mt-0.5">
+                        {selectedUser.rateLimitReason || "Order creation rate limit threshold exceeded."}
+                      </p>
+                      {selectedUser.rateLimitBlockedUntil && (
+                        <p className="text-[11px] text-rose-500/90 dark:text-rose-400/90 mt-1">
+                          Block expires: {new Date(selectedUser.rateLimitBlockedUntil).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => runUserAction(selectedUser.firebaseUID!, "unblock_rate_limit")}
+                  disabled={isBusyAction(`unblock_rate_limit-${selectedUser.firebaseUID}`)}
+                  className="w-full py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-medium text-xs transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                >
+                  <Unlock className="w-3.5 h-3.5" />
+                  {isBusyAction(`unblock_rate_limit-${selectedUser.firebaseUID}`) ? "Unblocking..." : "Unblock User from Rate Limit"}
+                </button>
+              </div>
+            ) : (
+              <div className="mt-4 p-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <p className="text-xs font-medium">Order Status: Normal (No active rate limit block)</p>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3 mt-6">
               <div className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 p-3">

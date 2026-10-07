@@ -11,6 +11,16 @@ const SubmissionRateLimitSchema = new mongoose.Schema({
     required: true
   },
 
+  identifierRaw: {
+    type: String,
+    default: ""
+  },
+
+  userUID: {
+    type: String,
+    default: ""
+  },
+
   windowStartedAt: {
     type: Date,
     required: true,

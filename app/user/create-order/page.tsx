@@ -15,7 +15,6 @@ import {
   UPLOAD_POLICY_HELPER_TEXT,
   requiresManualPageCount,
   UPLOAD_ACCEPT_ATTRIBUTE,
-  MAX_FILES_PER_ORDER,
   shouldUploadDirectlyToCloudinary
 } from "@/lib/upload-file"
 import { prepareFileForUpload } from "@/lib/client-upload-preprocess"
@@ -28,6 +27,7 @@ import {
   PRINT_TYPE_KEYS
 } from "@/lib/print-pricing"
 import { usePrintPricing } from "@/lib/use-print-pricing"
+import { usePlatformSettings } from "@/lib/use-platform-settings"
 
 type FileEntry = {
   id: string
@@ -101,7 +101,7 @@ function getFileTypeBadgeColor(file: File): string {
 let fileIdCounter = 0
 
 export default function CreateOrderPage() {
-
+  const { maxFilesPerOrder } = usePlatformSettings()
   const [fileEntries, setFileEntries] = useState<FileEntry[]>([])
   const [printType, setPrintType] = useState("bw")
   const [requestType, setRequestType] = useState("global")
@@ -179,11 +179,11 @@ export default function CreateOrderPage() {
 
     const newFiles = Array.from(selectedFiles)
     const currentCount = fileEntries.length
-    const available = MAX_FILES_PER_ORDER - currentCount
+    const available = maxFilesPerOrder - currentCount
     const filesToAdd = newFiles.slice(0, available)
 
     if (newFiles.length > available) {
-      const msg = `You can upload up to ${MAX_FILES_PER_ORDER} files. ${newFiles.length - available} file(s) were skipped.`
+      const msg = `You can upload up to ${maxFilesPerOrder} files. ${newFiles.length - available} file(s) were skipped.`
       toast.error(msg)
       reportClientErrorToAdmin({
         action: "upload.file_limit_exceeded",
@@ -192,7 +192,7 @@ export default function CreateOrderPage() {
         metadata: {
           totalFilesSelected: newFiles.length,
           alreadySelected: currentCount,
-          maxAllowed: MAX_FILES_PER_ORDER
+          maxAllowed: maxFilesPerOrder
         }
       })
     }
@@ -565,7 +565,7 @@ export default function CreateOrderPage() {
                   Create Print Order
                 </h1>
                 <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">
-                  Upload up to {MAX_FILES_PER_ORDER} files per order. Prices below are live admin-configured rates.
+                  Upload up to {maxFilesPerOrder} files per order. Prices below are live admin-configured rates.
                 </p>
               </div>
 
@@ -589,10 +589,10 @@ export default function CreateOrderPage() {
             {/* File Upload Zone */}
             <div>
               <label className="block mb-2 text-sm text-gray-400">
-                Upload Files ({fileEntries.length}/{MAX_FILES_PER_ORDER})
+                Upload Files ({fileEntries.length}/{maxFilesPerOrder})
               </label>
 
-              {fileEntries.length < MAX_FILES_PER_ORDER && (
+              {fileEntries.length < maxFilesPerOrder && (
                 <div>
                   <input
                     ref={fileInputRef}
@@ -608,9 +608,9 @@ export default function CreateOrderPage() {
                 </div>
               )}
 
-              {fileEntries.length >= MAX_FILES_PER_ORDER && (
+              {fileEntries.length >= maxFilesPerOrder && (
                 <p className="text-xs text-amber-400 mt-1">
-                  Maximum {MAX_FILES_PER_ORDER} files reached. Remove a file to add another.
+                  Maximum {maxFilesPerOrder} files reached. Remove a file to add another.
                 </p>
               )}
             </div>
