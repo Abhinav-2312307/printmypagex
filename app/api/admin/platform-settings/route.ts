@@ -34,7 +34,7 @@ const NUMERIC_RULES: NumericSettingRule[] = [
   { key: "orderBurstBlockMinutes", label: "Burst block duration", min: 1, unit: "minutes" },
   { key: "orderDailyMaxRequests", label: "Daily max requests", min: 1, unit: "requests" },
   { key: "orderDailyBlockHours", label: "Daily block duration", min: 1, unit: "hours" },
-  { key: "maxFilesPerOrder", label: "Max files per order", min: 1, max: 10, unit: "files" },
+  { key: "maxFilesPerOrder", label: "Max files per order", min: 1, max: 50, unit: "files" },
   { key: "maxSupplierDiscountPercent", label: "Max supplier discount", min: 0, max: 100, unit: "%" }
 ]
 

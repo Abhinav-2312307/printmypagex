@@ -4,6 +4,7 @@ import User from "@/models/User"
 import Order from "@/models/Order"
 import { mergeUserRoles } from "@/lib/user-roles"
 import { recordActivity } from "@/lib/activity-log"
+import { unblockUserRateLimit } from "@/lib/submission-protection"
 
 export async function POST(req: Request) {
   const auth = await authenticateAdminRequest(req)
@@ -173,6 +174,44 @@ export async function POST(req: Request) {
     })
 
     return NextResponse.json({ success: true, user })
+  }
+
+  if (action === "unblock_rate_limit") {
+    const unblockResult = await unblockUserRateLimit(firebaseUID)
+    const user = await User.findOne({ firebaseUID }).lean()
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: "User not found" },
+        { status: 404 }
+      )
+    }
+
+    await recordActivity({
+      actorType: "admin",
+      actorUID: auth.uid,
+      actorEmail: auth.email,
+      action: "user.rate_limit_unblocked",
+      entityType: "user",
+      entityId: firebaseUID,
+      level: "info",
+      message: `Admin unblocked order rate limit for user ${user.email || firebaseUID}`,
+      metadata: {
+        firebaseUID,
+        unblockedCount: unblockResult.unblockedCount
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: "User rate limit has been successfully unblocked.",
+      user: {
+        ...user,
+        isRateLimited: false,
+        rateLimitBlockedUntil: null,
+        rateLimitReason: null
+      }
+    })
   }
 
   if (action === "delete") {

@@ -16,6 +16,7 @@ type SubmissionLimitCheck = {
   identifier: string
   rules: SubmissionLimitRule[]
   payloadFingerprint?: string
+  userUID?: string
 }
 
 type SubmissionGuardResult =
@@ -46,7 +47,7 @@ const IP_HEADER_NAMES = [
   "fastly-client-ip"
 ]
 
-function normalizeTextFragment(value: unknown) {
+export function normalizeTextFragment(value: unknown) {
   if (typeof value !== "string") {
     return String(value ?? "")
   }
@@ -69,7 +70,7 @@ function normalizeUserAgent(value: string) {
   return normalized ? normalized.slice(0, 300) : "unknown"
 }
 
-function hashValue(value: string) {
+export function hashValue(value: string) {
   return crypto
     .createHash("sha256")
     .update(value)
@@ -101,7 +102,8 @@ async function consumeRateLimitBucket(
   scope: string,
   identifier: string,
   rule: SubmissionLimitRule,
-  payloadFingerprint?: string
+  payloadFingerprint?: string,
+  userUID?: string
 ): Promise<SubmissionGuardResult> {
   const now = new Date()
   const nowMs = now.getTime()
@@ -188,6 +190,11 @@ async function consumeRateLimitBucket(
       ? new Date(nowMs + (rule.blockDurationMs ?? rule.windowMs))
       : null
 
+  const isUserScope = scope.startsWith("order-create-user")
+  const assignedUserUID = userUID
+    ? normalizeTextFragment(userUID)
+    : (isUserScope ? normalizeTextFragment(identifier) : "")
+
   await SubmissionRateLimit.findOneAndUpdate(
     {
       scope: ruleScope,
@@ -195,6 +202,8 @@ async function consumeRateLimitBucket(
     },
     {
       $set: {
+        identifierRaw: identifier,
+        userUID: assignedUserUID,
         windowStartedAt,
         windowHits,
         blockedUntil: blockedForThisRequest,
@@ -277,7 +286,8 @@ export async function enforceSubmissionGuards(
         check.scope,
         check.identifier,
         rule,
-        check.payloadFingerprint
+        check.payloadFingerprint,
+        check.userUID
       )
 
       if (!result.allowed) {
@@ -324,4 +334,98 @@ export function createSubmissionLimitResponse(
       }
     }
   )
+}
+
+export type UserRateLimitStatus = {
+  isBlocked: boolean
+  blockedUntil: string | null
+  reason: string | null
+}
+
+export async function getUserRateLimitStatus(userUID: string): Promise<UserRateLimitStatus> {
+  if (!userUID) {
+    return { isBlocked: false, blockedUntil: null, reason: null }
+  }
+
+  await connectDB()
+  const normalizedUID = normalizeTextFragment(userUID)
+  const burstScope = "order-create-user:order-user-burst"
+  const dailyScope = "order-create-user:order-user-daily"
+  const burstHash = hashValue(`${burstScope}:${normalizedUID}`)
+  const dailyHash = hashValue(`${dailyScope}:${normalizedUID}`)
+
+  const records = await SubmissionRateLimit.find({
+    $or: [
+      { userUID: normalizedUID },
+      { userUID },
+      { identifierRaw: normalizedUID },
+      { identifierRaw: userUID },
+      { scope: burstScope, identifierHash: burstHash },
+      { scope: dailyScope, identifierHash: dailyHash }
+    ],
+    blockedUntil: { $gt: new Date() }
+  }).lean()
+
+  if (!records || records.length === 0) {
+    return { isBlocked: false, blockedUntil: null, reason: null }
+  }
+
+  let latestBlockedUntil: Date | null = null
+  let reason = "Order submission rate limit exceeded"
+
+  for (const record of records) {
+    const until = toDate((record as Record<string, unknown>).blockedUntil as Date | string)
+    if (until && (!latestBlockedUntil || until.getTime() > latestBlockedUntil.getTime())) {
+      latestBlockedUntil = until
+      const scopeStr = String((record as Record<string, unknown>).scope || "")
+      if (scopeStr.includes("burst")) {
+        reason = "Burst order limit exceeded (too many rapid requests)"
+      } else if (scopeStr.includes("daily")) {
+        reason = "Daily order limit exceeded"
+      }
+    }
+  }
+
+  return {
+    isBlocked: Boolean(latestBlockedUntil && latestBlockedUntil.getTime() > Date.now()),
+    blockedUntil: latestBlockedUntil ? latestBlockedUntil.toISOString() : null,
+    reason
+  }
+}
+
+export async function unblockUserRateLimit(userUID: string): Promise<{ success: boolean; unblockedCount: number }> {
+  if (!userUID) {
+    return { success: false, unblockedCount: 0 }
+  }
+
+  await connectDB()
+  const normalizedUID = normalizeTextFragment(userUID)
+  const burstScope = "order-create-user:order-user-burst"
+  const dailyScope = "order-create-user:order-user-daily"
+  const burstHash = hashValue(`${burstScope}:${normalizedUID}`)
+  const dailyHash = hashValue(`${dailyScope}:${normalizedUID}`)
+
+  const result = await SubmissionRateLimit.updateMany(
+    {
+      $or: [
+        { userUID: normalizedUID },
+        { userUID },
+        { identifierRaw: normalizedUID },
+        { identifierRaw: userUID },
+        { scope: burstScope, identifierHash: burstHash },
+        { scope: dailyScope, identifierHash: dailyHash }
+      ]
+    },
+    {
+      $set: {
+        blockedUntil: null,
+        windowHits: 0
+      }
+    }
+  )
+
+  return {
+    success: true,
+    unblockedCount: result.modifiedCount
+  }
 }

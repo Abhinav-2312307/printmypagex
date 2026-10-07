@@ -21,8 +21,7 @@ import {
   isAcceptedUploadFile,
   isImageUploadFile,
   isPdfUploadFile,
-  requiresManualPageCount,
-  MAX_FILES_PER_ORDER
+  requiresManualPageCount
 } from "@/lib/upload-file"
 import cloudinary from "@/lib/cloudinary"
 import { calculateOrderPrice } from "@/lib/print-pricing"
@@ -689,6 +688,9 @@ export async function POST(req: Request) {
     const isLastFile = formData.get("isLastFile") === "true"
     const isDirectUpload = formData.get("isDirectUpload") === "true"
 
+    const platformSettings = await getPlatformSettings()
+    const maxFilesPerOrder = platformSettings.maxFilesPerOrder || 5
+
     if (!isDirectUpload && files.length === 0) {
       return NextResponse.json(
         { error: "At least one file is required" },
@@ -696,9 +698,9 @@ export async function POST(req: Request) {
       )
     }
 
-    if (!isDirectUpload && files.length > MAX_FILES_PER_ORDER) {
+    if (!isDirectUpload && files.length > maxFilesPerOrder) {
       return NextResponse.json(
-        { error: `You can upload up to ${MAX_FILES_PER_ORDER} files per order` },
+        { error: `You can upload up to ${maxFilesPerOrder} files per order` },
         { status: 400 }
       )
     }
@@ -763,58 +765,61 @@ export async function POST(req: Request) {
       }
     }
 
-    // Build fingerprint from all file names and sizes
-    const fileFingerprints = isDirectUpload
-      ? `direct:${formData.get("storageURL")}:${formData.get("fileOriginalSizeBytes")}:${formData.get("originalFileName")}`
-      : files.map((f) => `${f.name}:${f.size}:${f.type}`).join("|")
-    const payloadFingerprint = buildSubmissionFingerprint([
-      firebaseUID,
-      fileFingerprints,
-      printType,
-      requestType,
-      supplier,
-      copies,
-      alternatePhone,
-      duplex,
-      spiralBinding,
-      instruction
-    ])
-    const platformSettings = await getPlatformSettings()
-    const rateLimitRules = buildOrderRateLimitRules(platformSettings)
-    const guard = await enforceSubmissionGuards([
-      {
-        scope: "order-create-device",
-        identifier: getRequestDeviceKey(req),
-        rules: rateLimitRules.deviceRules,
-        payloadFingerprint
-      },
-      {
-        scope: "order-create-user",
-        identifier: buildSubmissionFingerprint([firebaseUID]),
-        rules: rateLimitRules.userRules,
-        payloadFingerprint
-      }
-    ])
-
-    if (!guard.allowed) {
-      await recordActivity({
-        actorType: "user",
-        actorUID: firebaseUID,
-        actorEmail: auth.email,
-        action: "upload.rate_limited",
-        entityType: "order",
-        level: "warning",
-        message: `Order upload throttled by rate limit guard (retry after ${guard.retryAfterSeconds}s)`,
-        req,
-        metadata: {
-          retryAfterSeconds: guard.retryAfterSeconds,
-          firebaseUID
+    if (!appendOrderId) {
+      // Build fingerprint from all file names and sizes
+      const fileFingerprints = isDirectUpload
+        ? `direct:${formData.get("storageURL")}:${formData.get("fileOriginalSizeBytes")}:${formData.get("originalFileName")}`
+        : files.map((f) => `${f.name}:${f.size}:${f.type}`).join("|")
+      const payloadFingerprint = buildSubmissionFingerprint([
+        firebaseUID,
+        fileFingerprints,
+        printType,
+        requestType,
+        supplier,
+        copies,
+        alternatePhone,
+        duplex,
+        spiralBinding,
+        instruction
+      ])
+      const rateLimitRules = buildOrderRateLimitRules(platformSettings)
+      const guard = await enforceSubmissionGuards([
+        {
+          scope: "order-create-device",
+          identifier: getRequestDeviceKey(req),
+          rules: rateLimitRules.deviceRules,
+          payloadFingerprint,
+          userUID: firebaseUID
+        },
+        {
+          scope: "order-create-user",
+          identifier: buildSubmissionFingerprint([firebaseUID]),
+          rules: rateLimitRules.userRules,
+          payloadFingerprint,
+          userUID: firebaseUID
         }
-      })
-      return createSubmissionLimitResponse(
-        "Too many order creation requests were sent from this account or device.",
-        guard.retryAfterSeconds
-      )
+      ])
+
+      if (!guard.allowed) {
+        await recordActivity({
+          actorType: "user",
+          actorUID: firebaseUID,
+          actorEmail: auth.email,
+          action: "upload.rate_limited",
+          entityType: "order",
+          level: "warning",
+          message: `Order upload throttled by rate limit guard (retry after ${guard.retryAfterSeconds}s)`,
+          req,
+          metadata: {
+            retryAfterSeconds: guard.retryAfterSeconds,
+            firebaseUID
+          }
+        })
+        return createSubmissionLimitResponse(
+          "Too many order creation requests were sent from this account or device.",
+          guard.retryAfterSeconds
+        )
+      }
     }
 
     // Verify user
@@ -968,6 +973,13 @@ export async function POST(req: Request) {
           metadata: { appendOrderId }
         })
         return NextResponse.json({ error: "Order not found or unauthorized to append." }, { status: 404 })
+      }
+
+      if ((order.files?.length || 0) + processedFiles.length > maxFilesPerOrder) {
+        return NextResponse.json(
+          { error: `This order already has ${order.files?.length || 0} file(s). Maximum allowed is ${maxFilesPerOrder}.` },
+          { status: 400 }
+        )
       }
       
       order.files.push(...processedFiles)

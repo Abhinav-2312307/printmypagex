@@ -15,7 +15,6 @@ import {
   UPLOAD_POLICY_HELPER_TEXT,
   requiresManualPageCount,
   UPLOAD_ACCEPT_ATTRIBUTE,
-  MAX_FILES_PER_ORDER,
   shouldUploadDirectlyToCloudinary
 } from "@/lib/upload-file"
 import { prepareFileForUpload } from "@/lib/client-upload-preprocess"
@@ -38,6 +37,7 @@ import {
   PRINT_TYPE_KEYS
 } from "@/lib/print-pricing"
 import { usePrintPricing } from "@/lib/use-print-pricing"
+import { usePlatformSettings } from "@/lib/use-platform-settings"
 
 type FileEntry = {
   id: string
@@ -134,7 +134,7 @@ function getFileTypeBadgeColor(file: File): string {
 let fileIdCounter = 0
 
 export default function UserDashboard() {
-
+  const { maxFilesPerOrder } = usePlatformSettings()
   const [orders, setOrders] = useState<DashboardOrder[]>([])
   const [userData, setUserData] = useState<UserDashboardProfile | null>(null)
   const [suppliers, setSuppliers] = useState<SupplierSelectorItem[]>([])
@@ -301,11 +301,11 @@ export default function UserDashboard() {
 
     const newFiles = Array.from(selectedFiles)
     const currentCount = fileEntries.length
-    const available = MAX_FILES_PER_ORDER - currentCount
+    const available = maxFilesPerOrder - currentCount
     const filesToAdd = newFiles.slice(0, available)
 
     if (newFiles.length > available) {
-      const msg = `You can upload up to ${MAX_FILES_PER_ORDER} files. ${newFiles.length - available} file(s) were skipped.`
+      const msg = `You can upload up to ${maxFilesPerOrder} files. ${newFiles.length - available} file(s) were skipped.`
       toast.error(msg)
       reportClientErrorToAdmin({
         action: "upload.file_limit_exceeded",
@@ -314,7 +314,7 @@ export default function UserDashboard() {
         metadata: {
           totalFilesSelected: newFiles.length,
           alreadySelected: currentCount,
-          maxAllowed: MAX_FILES_PER_ORDER
+          maxAllowed: maxFilesPerOrder
         }
       })
     }
@@ -983,9 +983,9 @@ className="input w-32"
 
 <div>
   <label className="block mb-2 text-sm text-gray-400">
-    Upload Files ({fileEntries.length}/{MAX_FILES_PER_ORDER})
+    Upload Files ({fileEntries.length}/{maxFilesPerOrder})
   </label>
-  {fileEntries.length < MAX_FILES_PER_ORDER && (
+  {fileEntries.length < maxFilesPerOrder && (
     <div>
       <input
         ref={fileInputRef}
@@ -1000,9 +1000,9 @@ className="input w-32"
       </p>
     </div>
   )}
-  {fileEntries.length >= MAX_FILES_PER_ORDER && (
+  {fileEntries.length >= maxFilesPerOrder && (
     <p className="text-xs text-amber-400 mt-1">
-      Maximum {MAX_FILES_PER_ORDER} files reached. Remove a file to add another.
+      Maximum {maxFilesPerOrder} files reached. Remove a file to add another.
     </p>
   )}
 </div>
