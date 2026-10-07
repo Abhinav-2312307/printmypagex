@@ -4561,7 +4561,7 @@ export default function AdminPortalPage() {
                   <div>
                     <p className="text-sm font-semibold text-red-600 dark:text-red-400">Refund Payment</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Issue a full refund to the user's original payment method via Razorpay.
+                      Issue a full refund to the user&apos;s original payment method via Razorpay.
                       This action cannot be undone.
                     </p>
                   </div>

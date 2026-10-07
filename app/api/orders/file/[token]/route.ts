@@ -78,12 +78,24 @@ export async function GET(
         )
       }
 
-      const stream =
-        order.fileStorageEncoding === "gzip"
-          ? upstreamResponse.body.pipeThrough(new DecompressionStream("gzip"))
-          : upstreamResponse.body
+      if (order.fileStorageEncoding === "gzip") {
+        const arrayBuf = await upstreamResponse.arrayBuffer()
+        const decompressed = await gunzipAsync(Buffer.from(arrayBuf))
 
-      return new NextResponse(stream as any, {
+        return new NextResponse(decompressed, {
+          headers: {
+            "Cache-Control": "no-store",
+            "Content-Disposition": buildContentDisposition(order.fileOriginalName || "file"),
+            "Content-Length": String(decompressed.byteLength),
+            "Content-Type":
+              order.fileMimeType ||
+              upstreamResponse.headers.get("content-type") ||
+              "application/octet-stream"
+          }
+        })
+      }
+
+      return new NextResponse(upstreamResponse.body as any, {
         headers: {
           "Cache-Control": "no-store",
           "Content-Disposition": buildContentDisposition(order.fileOriginalName || "file"),
@@ -115,10 +127,7 @@ export async function GET(
         ? await gunzipAsync(upstreamBuffer)
         : upstreamBuffer
 
-    const { Readable } = await import("node:stream")
-    const webStream = Readable.toWeb(Readable.from(outputBuffer))
-
-    return new NextResponse(webStream as any, {
+    return new NextResponse(outputBuffer, {
       headers: {
         "Cache-Control": "no-store",
         "Content-Disposition": buildContentDisposition(order.fileOriginalName || "file"),
