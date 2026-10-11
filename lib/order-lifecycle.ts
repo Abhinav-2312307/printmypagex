@@ -85,11 +85,19 @@ export async function applyOrderLifecycleRules(
       paymentStatus: { $ne: "paid" },
       $or: [
         {
-          acceptedAt: { $ne: null, $lte: paymentCutoff }
+          paymentExpiresAt: { $ne: null, $lte: now }
         },
         {
-          acceptedAt: null,
-          createdAt: { $lte: paymentCutoff }
+          paymentExpiresAt: null,
+          $or: [
+            {
+              acceptedAt: { $ne: null, $lte: paymentCutoff }
+            },
+            {
+              acceptedAt: null,
+              createdAt: { $lte: paymentCutoff }
+            }
+          ]
         }
       ]
     },
@@ -100,7 +108,7 @@ export async function applyOrderLifecycleRules(
       },
       $push: {
         logs: {
-          message: `Order auto-cancelled because payment was not completed within ${settings.paymentAutoCancelHours} hours of acceptance`,
+          message: `Order auto-cancelled because payment was not completed within the allowed time limit`,
           time: now
         }
       }
