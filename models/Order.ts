@@ -193,6 +193,22 @@ const OrderSchema = new mongoose.Schema({
     default:null
   },
 
+  paymentToken:{
+    type:String,
+    default:null,
+    sparse:true
+  },
+
+  paymentExpiresAt:{
+    type:Date,
+    default:null
+  },
+
+  paymentLinkCreatedAt:{
+    type:Date,
+    default:null
+  },
+
   status:{
     type:String,
     enum:[
@@ -305,6 +321,8 @@ OrderSchema.index({ shortId: 1 })
 OrderSchema.index({ razorpayOrderId: 1 })
 OrderSchema.index({ paymentStatus: 1, paidAt: -1 })
 OrderSchema.index({ fileAccessToken: 1 }, { unique: true, sparse: true })
+OrderSchema.index({ paymentToken: 1 }, { sparse: true })
+OrderSchema.index({ paymentExpiresAt: 1 }, { sparse: true })
 
 const existingOrderModel = mongoose.models.Order
 
@@ -313,7 +331,9 @@ if (
   (
     !existingOrderModel.schema.path("storageChunkURLs") ||
     !existingOrderModel.schema.path("fileAccessToken") ||
-    !existingOrderModel.schema.path("files")
+    !existingOrderModel.schema.path("files") ||
+    !existingOrderModel.schema.path("paymentToken") ||
+    !existingOrderModel.schema.path("paymentExpiresAt")
   )
 ) {
   mongoose.deleteModel("Order")

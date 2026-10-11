@@ -30,10 +30,22 @@ export async function GET(req: Request) {
     })
 
     // Find stale awaiting_payment orders
+    const now = new Date()
     const stalePaymentOrders = await Order.find({
       status: "awaiting_payment",
-      updatedAt: { $lt: paymentCutoff }, // assuming updatedAt represents when it entered awaiting_payment
-      paymentStatus: { $ne: "paid" }
+      paymentStatus: { $ne: "paid" },
+      $or: [
+        {
+          paymentExpiresAt: { $ne: null, $lte: now }
+        },
+        {
+          paymentExpiresAt: null,
+          $or: [
+            { acceptedAt: { $ne: null, $lte: paymentCutoff } },
+            { acceptedAt: null, createdAt: { $lte: paymentCutoff } }
+          ]
+        }
+      ]
     })
 
     let cancelledCount = 0

@@ -24,6 +24,7 @@ type MinimalUser = {
   firebaseUID: string
   name?: string
   email?: string
+  phone?: string
 }
 
 type MinimalSupplier = {
@@ -64,7 +65,7 @@ async function loadUsersAndSuppliers(orders: OrderDoc[]) {
 
   const [users, suppliers] = await Promise.all([
     User.find({ firebaseUID: { $in: userUIDs } })
-      .select("firebaseUID name email")
+      .select("firebaseUID name email phone")
       .lean() as Promise<MinimalUser[]>,
     Supplier.find({ firebaseUID: { $in: supplierUIDs } })
       .select("firebaseUID name email approved active")
@@ -82,7 +83,7 @@ async function loadUsersAndSuppliers(orders: OrderDoc[]) {
 
 async function enrichOrder(order: OrderDoc) {
   const [user, supplier] = await Promise.all([
-    User.findOne({ firebaseUID: order.userUID }).select("firebaseUID name email").lean(),
+    User.findOne({ firebaseUID: order.userUID }).select("firebaseUID name email phone").lean(),
     order.supplierUID
       ? Supplier.findOne({ firebaseUID: order.supplierUID })
           .select("firebaseUID name email approved active")
@@ -326,7 +327,11 @@ export async function PATCH(req: Request) {
       order.cancelledAt = null
     }
 
-    if (
+    if (nextStatus === "awaiting_payment" && previousStatus === "cancelled") {
+      order.acceptedAt = now
+      order.paymentExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+      changes.push("reopened with 24-hour payment window")
+    } else if (
       ["accepted", "awaiting_payment", "printing", "printed", "delivered"].includes(nextStatus) &&
       !order.acceptedAt
     ) {

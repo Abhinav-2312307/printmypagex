@@ -184,13 +184,16 @@ type AdminOrder = {
   paidAt?: string | null
   adminReminderCount?: number
   lastAdminReminderAt?: string | null
+  paymentToken?: string | null
+  paymentExpiresAt?: string | null
+  paymentLinkCreatedAt?: string | null
   status: string
   acceptedAt?: string | null
   deliveredAt?: string | null
   cancelledAt?: string | null
   files?: any[]
   createdAt: string
-  user?: { name?: string; email?: string } | null
+  user?: { name?: string; email?: string; phone?: string } | null
   supplier?: { name?: string; email?: string; approved?: boolean; active?: boolean } | null
 }
 
@@ -516,6 +519,10 @@ export default function AdminPortalPage() {
     note: ""
   })
   const [orderReminderNote, setOrderReminderNote] = useState("")
+  const [paymentLinkHours, setPaymentLinkHours] = useState<number>(24)
+  const [generatedPaymentLink, setGeneratedPaymentLink] = useState<string>("")
+  const [linkCopied, setLinkCopied] = useState<boolean>(false)
+  const [paymentLinkSuccess, setPaymentLinkSuccess] = useState<string>("")
   const [showControlHub, setShowControlHub] = useState(false)
 
   const [ordersWorkspace, setOrdersWorkspace] = useState<OrdersWorkspace | null>(null)
@@ -783,6 +790,14 @@ export default function AdminPortalPage() {
 
   useEffect(() => {
     setOrderReminderNote("")
+    setPaymentLinkSuccess("")
+    setLinkCopied(false)
+    if (selectedOrder?.paymentToken) {
+      const origin = typeof window !== "undefined" ? window.location.origin : ""
+      setGeneratedPaymentLink(`${origin}/pay/${selectedOrder._id}?token=${selectedOrder.paymentToken}`)
+    } else {
+      setGeneratedPaymentLink("")
+    }
   }, [selectedOrder])
 
   const logout = async () => {
@@ -1188,6 +1203,57 @@ export default function AdminPortalPage() {
     }
   }
 
+  const runGeneratePaymentLink = async () => {
+    if (!selectedOrder) return
+
+    if (selectedOrder.paymentStatus === "paid") {
+      setError("Cannot generate payment link for an already paid order")
+      return
+    }
+
+    try {
+      setBusyAction(`payment-link-${selectedOrder._id}`)
+      setError("")
+      setPaymentLinkSuccess("")
+
+      const response = await adminFetch<{
+        success: boolean
+        paymentLink: string
+        paymentExpiresAt: string
+        order: AdminOrder
+        message?: string
+      }>("/api/admin/orders/payment-link", {
+        method: "POST",
+        body: JSON.stringify({
+          orderId: selectedOrder._id,
+          hours: paymentLinkHours
+        })
+      })
+
+      if (!response.success) {
+        setError(response.message || "Failed to generate payment link")
+        return
+      }
+
+      setGeneratedPaymentLink(response.paymentLink)
+      const updatedOrder = response.order
+
+      setOrders((prev) =>
+        prev.map((item) => (item._id === updatedOrder._id ? updatedOrder : item))
+      )
+      setSelectedOrder(updatedOrder)
+      setWorkspaceOrderDetail((prev) =>
+        prev && prev._id === updatedOrder._id ? updatedOrder : prev
+      )
+      setPaymentLinkSuccess(`Payment link generated (${paymentLinkHours}h validity) and order reopened!`)
+      setMessage("Direct payment link generated successfully!")
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError))
+    } finally {
+      setBusyAction("")
+    }
+  }
+
   const runOrderReminderEmail = async () => {
     if (!selectedOrder) return
 
@@ -1217,7 +1283,8 @@ export default function AdminPortalPage() {
           body: JSON.stringify({
             action: "send_payment_reminder",
             orderId: selectedOrder._id,
-            note: orderReminderNote.trim()
+            note: orderReminderNote.trim(),
+            paymentLink: generatedPaymentLink || undefined
           })
         }
       )
@@ -4541,6 +4608,166 @@ export default function AdminPortalPage() {
                 {busyAction === `order-update-${selectedOrder._id}` ? "Saving..." : "Save Order Changes"}
               </button>
             </div>
+
+            {selectedOrder.paymentStatus !== "paid" ? (
+              <div className="mt-5 space-y-3.5 rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">
+                        Direct Payment Link & Reopen
+                      </p>
+                      {selectedOrder.status === "cancelled" ? (
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/20">
+                          Order Cancelled
+                        </span>
+                      ) : selectedOrder.status === "awaiting_payment" ? (
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                          Awaiting Payment
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Generate a secure, direct payment link. The user can complete payment directly without logging in, and it will be recorded for this user&apos;s account.
+                    </p>
+                  </div>
+                </div>
+
+                {selectedOrder.status === "cancelled" ? (
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300">
+                    💡 Generating a link will automatically <strong>reopen this order</strong> to &apos;Awaiting Payment&apos; and extend the deadline so it won&apos;t auto-cancel.
+                  </div>
+                ) : null}
+
+                {paymentLinkSuccess ? (
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-300">
+                    ✅ {paymentLinkSuccess}
+                  </div>
+                ) : null}
+
+                {/* Expiry Selector */}
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-gray-500 dark:text-gray-400">Payment Window:</span>
+                  {[12, 24, 48, 72].map((hrs) => (
+                    <button
+                      key={hrs}
+                      type="button"
+                      onClick={() => setPaymentLinkHours(hrs)}
+                      className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition ${
+                        paymentLinkHours === hrs
+                          ? "border-indigo-500 bg-indigo-500/20 text-indigo-600 dark:text-indigo-300"
+                          : "border-gray-200 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300"
+                      }`}
+                    >
+                      {hrs}h
+                    </button>
+                  ))}
+                </div>
+
+                {/* Generate Button */}
+                <button
+                  type="button"
+                  onClick={runGeneratePaymentLink}
+                  disabled={busyAction === `payment-link-${selectedOrder._id}`}
+                  className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-teal-600 hover:from-indigo-500 hover:to-teal-500 text-white px-4 py-2.5 text-sm font-semibold shadow-md transition disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {busyAction === `payment-link-${selectedOrder._id}` ? (
+                    "Generating Link..."
+                  ) : selectedOrder.status === "cancelled" ? (
+                    "Reopen Order & Generate Payment Link"
+                  ) : selectedOrder.paymentToken ? (
+                    "Refresh / Extend Payment Window"
+                  ) : (
+                    "Generate Direct Payment Link"
+                  )}
+                </button>
+
+                {/* Active Link Box */}
+                {(generatedPaymentLink || selectedOrder.paymentToken) ? (
+                  <div className="space-y-2.5 pt-2 border-t border-indigo-500/15">
+                    {selectedOrder.paymentExpiresAt ? (
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center justify-between">
+                        <span>
+                          Expires:{" "}
+                          <strong className="text-gray-700 dark:text-gray-200">
+                            {formatDateTime(selectedOrder.paymentExpiresAt)}
+                          </strong>
+                        </span>
+                        {new Date(selectedOrder.paymentExpiresAt).getTime() > Date.now() ? (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">● Link Active</span>
+                        ) : (
+                          <span className="text-red-500 font-medium">● Link Expired</span>
+                        )}
+                      </p>
+                    ) : null}
+
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        readOnly
+                        value={
+                          generatedPaymentLink ||
+                          `${typeof window !== "undefined" ? window.location.origin : ""}/pay/${selectedOrder._id}?token=${selectedOrder.paymentToken}`
+                        }
+                        className="flex-1 rounded-lg border border-gray-200 dark:border-white/20 bg-white/90 dark:bg-black/40 px-3 py-1.5 text-xs text-gray-800 dark:text-gray-200 select-all font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const link =
+                            generatedPaymentLink ||
+                            `${window.location.origin}/pay/${selectedOrder._id}?token=${selectedOrder.paymentToken}`
+                          navigator.clipboard.writeText(link)
+                          setLinkCopied(true)
+                          setTimeout(() => setLinkCopied(false), 2500)
+                        }}
+                        className="px-3 py-1.5 rounded-lg border border-indigo-400/30 bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 text-xs font-semibold hover:bg-indigo-500/25 transition flex items-center gap-1"
+                      >
+                        {linkCopied ? "Copied!" : "Copy Link"}
+                      </button>
+                    </div>
+
+                    {/* Quick WhatsApp Share */}
+                    {(() => {
+                      const link =
+                        generatedPaymentLink ||
+                        `${typeof window !== "undefined" ? window.location.origin : ""}/pay/${selectedOrder._id}?token=${selectedOrder.paymentToken}`
+                      const targetPhone = selectedOrder.user?.phone || selectedOrder.alternatePhone || ""
+                      const cleanPhone = targetPhone.replace(/\D/g, "")
+                      const phoneParam = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone
+                      const orderRef = selectedOrder.shortId || selectedOrder._id.slice(-8)
+                      const finalAmt = Number(selectedOrder.finalPrice ?? selectedOrder.estimatedPrice ?? 0).toFixed(2)
+                      const msg = `Hello! Here is the direct payment link for your print order #${orderRef} (INR ${finalAmt}) on PrintMyPage: ${link}\n\nPlease complete payment before the window expires so we can begin printing!`
+                      const waUrl = phoneParam
+                        ? `https://wa.me/${phoneParam}?text=${encodeURIComponent(msg)}`
+                        : `https://wa.me/?text=${encodeURIComponent(msg)}`
+
+                      return (
+                        <div className="flex items-center gap-2 pt-1">
+                          <a
+                            href={waUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold hover:bg-emerald-600/25 transition"
+                          >
+                            <span>Share on WhatsApp {targetPhone ? `(${targetPhone})` : ""}</span>
+                          </a>
+
+                          <a
+                            href={link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium transition"
+                          >
+                            Open Page ↗
+                          </a>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mt-5 space-y-3 rounded-2xl border border-gray-200 dark:border-white/10 bg-white/80 dark:bg-white/5 p-4">
               <div className="flex items-start justify-between gap-4">

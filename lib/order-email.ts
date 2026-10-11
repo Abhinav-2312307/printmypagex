@@ -51,6 +51,7 @@ type AdminUserMessageInput = {
 type AdminPaymentReminderOptions = {
   note?: string
   adminEmail?: string
+  paymentLink?: string
 }
 
 const appName = "PrintMyPage"
@@ -479,6 +480,24 @@ export async function sendAdminPaymentReminderNotification(
     throw new Error("Selected order user does not have a valid email address")
   }
 
+  const rawToken = (order as any).paymentToken
+  const payUrl =
+    options.paymentLink ||
+    (rawToken ? `https://printmypage.in/pay/${order._id}?token=${rawToken}` : null)
+
+  const payButtonHtml = payUrl
+    ? `
+      <div style="text-align: center; margin: 26px 0;">
+        <a href="${payUrl}" style="background-color: #10b981; color: #ffffff; padding: 14px 28px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 15px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);">
+          Pay Now ${formatMoney(order.finalPrice ?? order.estimatedPrice)}
+        </a>
+        <p style="margin-top: 10px; font-size: 12px; color: #64748b;">
+          Direct payment link: <a href="${payUrl}" style="color: #6366f1;">${payUrl}</a>
+        </p>
+      </div>
+    `
+    : ""
+
   await sendEmailStrict({
     to: userProfile.email,
     subject: `${appName}: Payment Reminder For Your Order`,
@@ -487,7 +506,8 @@ export async function sendAdminPaymentReminderNotification(
       <h2>Payment reminder</h2>
       <p>Hi ${escapeHtml(userProfile.name || "User")}, this is a reminder that your payment is still pending for the order below.</p>
       <p><strong>Amount payable:</strong> ${formatMoney(order.finalPrice ?? order.estimatedPrice)}</p>
-      <p>Please complete the payment from your orders page so printing can begin without further delay.</p>
+      ${payButtonHtml}
+      <p>Please complete the payment promptly so printing can begin without further delay.</p>
       ${renderAdminNote(options.note)}
       ${orderSummaryHtml(order)}
     `

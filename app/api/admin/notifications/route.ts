@@ -223,9 +223,12 @@ export async function POST(req: Request) {
         )
       }
 
+      const paymentLink = String(body?.paymentLink || "").trim()
+
       await sendAdminPaymentReminderNotification(order, {
         note,
-        adminEmail: auth.email
+        adminEmail: auth.email,
+        paymentLink: paymentLink || undefined
       })
 
       const now = new Date()
