@@ -76,91 +76,93 @@ export async function POST(req: Request) {
     await connectDB()
     await applyOrderLifecycleRules()
 
-    const order = await Order.findOne({
+    const orders = await Order.find({
       razorpayOrderId: payment.order_id
     })
 
-    if (!order) {
+    if (!orders || orders.length === 0) {
       return NextResponse.json({ success: true, message: "Order not found, ignored" })
     }
 
-    if (order.status === "cancelled" && order.paymentStatus !== "paid") {
-      order.logs.push({
-        message: "Payment webhook ignored because order was already cancelled",
-        time: new Date()
-      })
-      await order.save()
-      await recordActivity({
-        actorType: "system",
-        action: "payment.webhook_ignored",
-        entityType: "order",
-        entityId: String(order._id),
-        level: "warning",
-        message: `Ignored captured payment webhook for cancelled order ${String(order._id).slice(-8)}`,
-        req,
-        metadata: {
-          orderId: String(order._id),
-          razorpayOrderId: String(payment.order_id),
-          razorpayPaymentId: String(payment.id)
-        }
-      })
-      return NextResponse.json({ success: true, message: "Cancelled order payment ignored" })
-    }
-
-    if (order.paymentStatus !== "paid" && order.paymentStatus !== "refunded") {
-      order.paymentStatus = "paid"
-      order.razorpayPaymentId = payment.id
-      order.paidAt = new Date()
-      if (order.status === "awaiting_payment" || order.status === "accepted") {
-        order.status = "printing"
+    for (const order of orders) {
+      if (order.status === "cancelled" && order.paymentStatus !== "paid") {
         order.logs.push({
-          message: "Payment captured, order moved to printing",
+          message: "Payment webhook ignored because order was already cancelled",
           time: new Date()
         })
+        await order.save()
+        await recordActivity({
+          actorType: "system",
+          action: "payment.webhook_ignored",
+          entityType: "order",
+          entityId: String(order._id),
+          level: "warning",
+          message: `Ignored captured payment webhook for cancelled order ${String(order._id).slice(-8)}`,
+          req,
+          metadata: {
+            orderId: String(order._id),
+            razorpayOrderId: String(payment.order_id),
+            razorpayPaymentId: String(payment.id)
+          }
+        })
+        continue
       }
-      order.logs.push({
-        message: "Payment captured via webhook",
-        time: new Date()
-      })
-      await order.save()
 
-      try {
-        await pusherServer.trigger(`private-user-${order.userUID}`, "order-updated", order)
-      } catch (pushError) {
-        console.error("PUSHER USER WEBHOOK UPDATE ERROR:", pushError)
-      }
-
-      try {
-        if (order.supplierUID) {
-          await pusherServer.trigger(`private-supplier-${order.supplierUID}`, "order-updated", order)
+      if (order.paymentStatus !== "paid" && order.paymentStatus !== "refunded") {
+        order.paymentStatus = "paid"
+        order.razorpayPaymentId = payment.id
+        order.paidAt = new Date()
+        if (order.status === "awaiting_payment" || order.status === "accepted") {
+          order.status = "printing"
+          order.logs.push({
+            message: "Payment captured, order moved to printing",
+            time: new Date()
+          })
         }
-      } catch (pushError) {
-        console.error("PUSHER SUPPLIER WEBHOOK UPDATE ERROR:", pushError)
-      }
+        order.logs.push({
+          message: "Payment captured via webhook",
+          time: new Date()
+        })
+        await order.save()
 
-      sendPaymentReceivedNotifications(order).catch((emailError) => {
-        console.error("PAYMENT_RECEIVED_EMAIL_ERROR:", emailError)
-      })
-
-      await recordActivity({
-        actorType: "system",
-        action: "payment.webhook_captured",
-        entityType: "order",
-        entityId: String(order._id),
-        level: "success",
-        message: `Webhook captured payment for order ${String(order._id).slice(-8)}`,
-        req,
-        metadata: {
-          orderId: String(order._id),
-          userUID: String(order.userUID),
-          supplierUID: String(order.supplierUID || ""),
-          razorpayOrderId: String(payment.order_id),
-          razorpayPaymentId: String(payment.id)
+        try {
+          await pusherServer.trigger(`private-user-${order.userUID}`, "order-updated", order)
+        } catch (pushError) {
+          console.error("PUSHER USER WEBHOOK UPDATE ERROR:", pushError)
         }
-      })
+
+        try {
+          if (order.supplierUID) {
+            await pusherServer.trigger(`private-supplier-${order.supplierUID}`, "order-updated", order)
+          }
+        } catch (pushError) {
+          console.error("PUSHER SUPPLIER WEBHOOK UPDATE ERROR:", pushError)
+        }
+
+        sendPaymentReceivedNotifications(order).catch((emailError) => {
+          console.error("PAYMENT_RECEIVED_EMAIL_ERROR:", emailError)
+        })
+
+        await recordActivity({
+          actorType: "system",
+          action: "payment.webhook_captured",
+          entityType: "order",
+          entityId: String(order._id),
+          level: "success",
+          message: `Webhook captured payment for order ${String(order._id).slice(-8)}`,
+          req,
+          metadata: {
+            orderId: String(order._id),
+            userUID: String(order.userUID),
+            supplierUID: String(order.supplierUID || ""),
+            razorpayOrderId: String(payment.order_id),
+            razorpayPaymentId: String(payment.id)
+          }
+        })
+      }
     }
 
-    return NextResponse.json({ success: true, message: "Webhook processed" })
+    return NextResponse.json({ success: true, message: `Webhook processed ${orders.length} order(s)` })
   } catch (error) {
     console.error("PAYMENT WEBHOOK ERROR:", error)
     return NextResponse.json(
