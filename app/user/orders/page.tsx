@@ -59,6 +59,7 @@ pdfPassword?: string
 createdAt: string
 acceptedAt?: string | null
 paidAt?: string | null
+cancelledAt?: string | null
 refundedAt?: string | null
 razorpayPaymentId?: string | null
 razorpayRefundId?: string | null
@@ -115,8 +116,16 @@ const [orders,setOrders] = useState<UserOrder[]>([])
 const [loading,setLoading] = useState(true)
 const [selectedOrder,setSelectedOrder] = useState<UserOrder | null>(null)
 const [paying,setPaying] = useState(false)
+const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([])
+const [payingBatch, setPayingBatch] = useState(false)
 const [showSupplierPeek,setShowSupplierPeek] = useState(false)
 const [showSupplierCard,setShowSupplierCard] = useState(false)
+
+useEffect(() => {
+  setSelectedOrderIds(prev =>
+    prev.filter(id => orders.some(o => o._id === id && o.status === "awaiting_payment" && o.paymentStatus === "unpaid"))
+  )
+}, [orders])
 
 useEffect(() => {
   if (selectedOrder || showSupplierCard) {
@@ -390,6 +399,161 @@ setPaying(false)
 
 }
 
+const payableOrders = orders.filter(
+  (o) => o.status === "awaiting_payment" && o.paymentStatus === "unpaid"
+)
+const selectedOrders = payableOrders.filter((o) =>
+  selectedOrderIds.includes(o._id)
+)
+const selectedOrdersTotalAmount = selectedOrders.reduce(
+  (sum, o) => sum + Number(o.finalPrice ?? o.estimatedPrice ?? 0),
+  0
+)
+const allPayableSelected =
+  payableOrders.length > 0 &&
+  payableOrders.every((o) => selectedOrderIds.includes(o._id))
+
+const toggleSelectOrder = (orderId: string) => {
+  setSelectedOrderIds((prev) =>
+    prev.includes(orderId)
+      ? prev.filter((id) => id !== orderId)
+      : [...prev, orderId]
+  )
+}
+
+const toggleSelectAll = () => {
+  if (allPayableSelected) {
+    setSelectedOrderIds([])
+  } else {
+    setSelectedOrderIds(payableOrders.map((o) => o._id))
+  }
+}
+
+const payBatch = async () => {
+  const user = auth.currentUser
+  if (!user) {
+    toast.error("Please login again")
+    return
+  }
+
+  if (selectedOrderIds.length === 0) {
+    toast.error("Please select at least one order to pay")
+    return
+  }
+
+  if (paying || payingBatch) return
+  setPayingBatch(true)
+
+  try {
+    const isLoaded = await loadRazorpayScript()
+    if (!isLoaded) {
+      toast.error("Failed to load payment gateway")
+      setPayingBatch(false)
+      return
+    }
+
+    const createRes = await authFetch("/api/payment/batch/create", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        orderIds: selectedOrderIds,
+        userUID: user.uid
+      })
+    })
+
+    const createData = await createRes.json()
+    if (!createRes.ok || !createData.success) {
+      toast.error(createData.message || "Batch payment initialization failed")
+      setPayingBatch(false)
+      return
+    }
+
+    const Razorpay = window.Razorpay
+    if (!Razorpay) {
+      toast.error("Payment gateway unavailable")
+      setPayingBatch(false)
+      return
+    }
+
+    const razorpay = new Razorpay({
+      key: createData.key,
+      amount: createData.amount,
+      currency: createData.currency,
+      name: "PrintMyPage",
+      description: `Batch Payment for ${selectedOrderIds.length} orders`,
+      order_id: createData.razorpayOrderId,
+      handler: async (response: RazorpayResponse) => {
+        try {
+          const verifyRes = await authFetch("/api/payment/batch/verify", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              orderIds: selectedOrderIds,
+              userUID: user.uid,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature
+            })
+          })
+
+          const verifyData = await verifyRes.json()
+          if (!verifyRes.ok || !verifyData.success) {
+            toast.error(verifyData.message || "Payment verification failed")
+            setPayingBatch(false)
+            return
+          }
+
+          toast.success(
+            `Payment successful! ${verifyData.orders?.length || selectedOrderIds.length} orders updated.`
+          )
+
+          const updatedOrdersMap = new Map<string, UserOrder>(
+            (verifyData.orders || []).map((o: UserOrder) => [o._id, o])
+          )
+          setOrders((prev) =>
+            prev.map((o) => updatedOrdersMap.get(o._id) || o)
+          )
+
+          setSelectedOrder((prev: UserOrder | null) =>
+            prev && updatedOrdersMap.has(prev._id)
+              ? (updatedOrdersMap.get(prev._id) as UserOrder)
+              : prev
+          )
+
+          setSelectedOrderIds([])
+        } catch {
+          toast.error(
+            "Batch payment verification encountered an issue. Orders will be synced shortly."
+          )
+        } finally {
+          setPayingBatch(false)
+        }
+      },
+      prefill: {
+        name: user.displayName || "",
+        email: user.email || ""
+      },
+      theme: {
+        color: "#10b981"
+      },
+      modal: {
+        ondismiss: () => {
+          setPayingBatch(false)
+        }
+      }
+    })
+
+    razorpay.open()
+  } catch {
+    toast.error("Batch payment failed")
+    setPayingBatch(false)
+  }
+}
+
 const downloadReceipt = async(orderId:string)=>{
 const user = auth.currentUser
 if(!user){
@@ -465,15 +629,65 @@ My Orders
 
 {!loading &&(
 
-<div className="bg-card p-5 sm:p-7 md:p-10 rounded-3xl mb-10 md:mb-12 shadow-xl">
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-10 md:mb-12">
 
+<div className="bg-card p-5 sm:p-7 md:p-8 rounded-3xl shadow-xl flex flex-col justify-between">
+<div>
 <p className="text-gray-400 text-sm">
 Total Orders
 </p>
-
 <h2 className="text-4xl md:text-5xl font-bold mt-2 text-gradient">
 {totalOrders}
 </h2>
+</div>
+<p className="text-xs text-gray-500 mt-4">
+All lifetime print jobs submitted by you.
+</p>
+</div>
+
+{payableOrders.length > 0 ? (
+<div className="bg-card p-5 sm:p-7 md:p-8 rounded-3xl shadow-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 via-transparent to-transparent flex flex-col justify-between">
+<div>
+<div className="flex items-center justify-between">
+<p className="text-emerald-400 text-sm font-semibold flex items-center gap-2">
+<span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+Ready for Payment
+</p>
+<span className="text-xs bg-emerald-500/20 text-emerald-300 font-bold px-2.5 py-1 rounded-full border border-emerald-500/30">
+{payableOrders.length} {payableOrders.length === 1 ? "Order" : "Orders"}
+</span>
+</div>
+<p className="text-gray-400 text-xs mt-1.5">
+Select multiple orders below or use the button below to pay them all at once in a single transaction.
+</p>
+</div>
+
+<div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-3 border-t border-white/10">
+<button
+type="button"
+onClick={toggleSelectAll}
+className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 transition text-gray-200"
+>
+{allPayableSelected ? "Deselect All" : `Select All Ready (${payableOrders.length})`}
+</button>
+{selectedOrderIds.length > 0 && (
+<span className="text-xs text-emerald-400 font-semibold">
+{selectedOrderIds.length} selected • ₹{selectedOrdersTotalAmount}
+</span>
+)}
+</div>
+</div>
+) : (
+<div className="bg-card p-5 sm:p-7 md:p-8 rounded-3xl shadow-xl flex flex-col justify-between">
+<div>
+<p className="text-gray-400 text-sm">Payment Status</p>
+<h3 className="text-2xl font-bold mt-2 text-emerald-400">All Caught Up ✨</h3>
+</div>
+<p className="text-xs text-gray-500 mt-4">
+No pending payments awaiting your approval.
+</p>
+</div>
+)}
 
 </div>
 
@@ -483,25 +697,55 @@ Total Orders
 
 <div className="grid md:grid-cols-2 gap-4 sm:gap-6 md:gap-8">
 
-{orders.map(order=>(
+{orders.map(order=>{
+const isPayable = order.status === "awaiting_payment" && order.paymentStatus === "unpaid"
+const isSelected = selectedOrderIds.includes(order._id)
 
+return (
 <div
 key={order._id}
-className="bg-card p-5 sm:p-6 md:p-8 rounded-3xl hover:scale-[1.02] transition shadow-xl"
+className={`bg-card p-5 sm:p-6 md:p-8 rounded-3xl transition shadow-xl relative overflow-hidden ${
+isSelected
+? "ring-2 ring-emerald-400 border-emerald-400/60 shadow-emerald-500/10 scale-[1.01]"
+: "hover:scale-[1.01]"
+}`}
 >
 
 
-<div className="flex justify-between items-center mb-6">
+<div className="flex justify-between items-start mb-6 gap-3">
 
+<div>
 <p className="text-2xl font-bold text-gradient">
 {(order.printType || "bw").toUpperCase()} Print
 </p>
+</div>
 
+<div className="flex flex-col items-end gap-2">
 <span
 className={`px-4 py-1 text-xs rounded-full font-semibold tracking-wide ${getStatusColor(order.status)}`}
 >
 {formatStatus(order.status)}
 </span>
+
+{isPayable && (
+<label
+onClick={(e)=>e.stopPropagation()}
+className={`cursor-pointer inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition select-none ${
+isSelected
+? "bg-emerald-500 text-black border-emerald-400 shadow-md shadow-emerald-500/20"
+: "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+}`}
+>
+<input
+type="checkbox"
+checked={isSelected}
+onChange={()=>toggleSelectOrder(order._id)}
+className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-0 cursor-pointer accent-black"
+/>
+<span>{isSelected ? "Selected" : "Select to Pay"}</span>
+</label>
+)}
+</div>
 
 </div>
 
@@ -576,7 +820,7 @@ View Details →
 {order.status==="awaiting_payment" && order.paymentStatus==="unpaid" &&(
 <button
 onClick={()=>payNow(order)}
-disabled={paying}
+disabled={paying || payingBatch}
 className="mt-4 w-full bg-green-500 px-4 py-2 rounded-xl font-semibold disabled:opacity-60"
 >
 {paying ? "Processing..." : `Pay Now ₹${order.finalPrice ?? order.estimatedPrice}`}
@@ -585,8 +829,8 @@ className="mt-4 w-full bg-green-500 px-4 py-2 rounded-xl font-semibold disabled:
 
 
 </div>
-
-))}
+)
+})}
 
 </div>
 
@@ -827,7 +1071,7 @@ done:["printed","delivered"].includes(selectedOrder.status) && selectedOrder.pay
 {
 title:"Delivered",
 time:selectedOrder.deliveredAt || null,
-done:selectedOrder.status==="delivered" && selectedOrder.paymentStatus !== "refunded" && selectedOrder.status !== "cancelled"
+done:selectedOrder.status==="delivered" && selectedOrder.paymentStatus !== "refunded"
 }
 
 ].map((step,i)=>{
@@ -1011,6 +1255,57 @@ onClick={()=>setShowSupplierCard(false)}
 className="mt-4 w-full bg-indigo-500 px-4 py-2 rounded-xl font-semibold"
 >
 Close Supplier Card
+</button>
+</div>
+</div>
+)}
+
+{selectedOrderIds.length > 0 && (
+<div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[92%] max-w-xl bg-slate-900/95 dark:bg-[#121626]/95 backdrop-blur-xl border border-emerald-500/40 text-white p-4 sm:p-5 rounded-3xl shadow-2xl shadow-black/50 flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-bottom-5">
+<div className="flex items-center gap-3.5 w-full sm:w-auto">
+<div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold text-lg shrink-0">
+{selectedOrderIds.length}
+</div>
+<div>
+<div className="flex items-center gap-2">
+<span className="text-sm font-semibold text-white">
+{selectedOrderIds.length} {selectedOrderIds.length === 1 ? "order" : "orders"} selected
+</span>
+<span className="text-[11px] text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium">
+Batch Pay
+</span>
+</div>
+<p className="text-xl font-bold text-emerald-400 mt-0.5">
+Total: ₹{selectedOrdersTotalAmount}
+</p>
+</div>
+</div>
+
+<div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+<button
+type="button"
+onClick={()=>setSelectedOrderIds([])}
+disabled={paying || payingBatch}
+className="px-4 py-2.5 rounded-xl text-xs font-semibold text-gray-300 hover:text-white bg-white/10 hover:bg-white/15 transition disabled:opacity-50"
+>
+Clear
+</button>
+<button
+type="button"
+onClick={payBatch}
+disabled={paying || payingBatch}
+className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl text-sm font-bold text-black bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 shadow-lg shadow-emerald-500/30 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+>
+{payingBatch ? (
+<>
+<span className="inline-block w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></span>
+Processing...
+</>
+) : (
+<>
+Pay All ({selectedOrderIds.length}) • ₹{selectedOrdersTotalAmount}
+</>
+)}
 </button>
 </div>
 </div>
